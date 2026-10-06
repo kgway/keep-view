@@ -1,0 +1,33 @@
+name: Verify plugin
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.19.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm release:prepare
+      - name: Install test browser
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keep-view-build
+          path: dist/keep-view/
+          if-no-files-found: error

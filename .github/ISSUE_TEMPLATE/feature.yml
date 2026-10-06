@@ -1,0 +1,10 @@
+name: Feature request
+description: Describe a use case or improvement.
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: What would you like to do?
+      description: Use invented examples. Do not share private notes or personal information.
+    validations:
+      required: true

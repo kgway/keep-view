@@ -1,0 +1,11 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const {root}=require('./public-files.cjs');
+const version=process.argv[2];
+if(!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version||'')) throw new Error('Usage: pnpm version:set x.y.z (no v prefix or prerelease suffix)');
+const read=name=>JSON.parse(fs.readFileSync(path.join(root,name),'utf8'));
+const manifest=read('manifest.json'),pkg=read('package.json'),versions=read('versions.json');
+manifest.version=pkg.version=version;versions[version]=manifest.minAppVersion;
+for(const [name,value] of [['manifest.json',manifest],['package.json',pkg],['versions.json',versions]]) fs.writeFileSync(path.join(root,name),JSON.stringify(value,null,2)+'\n');
+console.log('Version metadata updated to '+version+'. Refresh the lockfile with pnpm install --lockfile-only and update CHANGELOG.md.');

@@ -1,0 +1,9 @@
+{
+  "id": "keep-view",
+  "name": "Keep View Explorer",
+  "version": "1.43.1",
+  "minAppVersion": "1.8.7",
+  "description": "Browse notes as cards with tag expressions, folder navigation, date filters, and bulk editing.",
+  "author": "kgway",
+  "isDesktopOnly": false
+}

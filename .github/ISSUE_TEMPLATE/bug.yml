@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible problem using synthetic notes.
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include private notes, real vault paths, email addresses, access tokens or unredacted screenshots. Issues are public."
+  - type: input
+    id: versions
+    attributes:
+      label: Versions and platform
+      description: Keep View version, Obsidian version, desktop or mobile, operating system.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use invented note names and relative paths.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true

@@ -1,0 +1,40 @@
+{
+  "name": "obsidian-keep-view",
+  "version": "1.43.1",
+  "private": true,
+  "description": "Browse and organize Markdown notes as cards.",
+  "scripts": {
+    "check": "node --check main.js",
+    "test": "node --test tests/*.test.cjs",
+    "build": "node scripts/package.cjs",
+    "test:ui": "node tests/ui.cjs",
+    "verify:release": "node scripts/verify-release.cjs",
+    "bench:search": "node --expose-gc scripts/benchmark-search.cjs",
+    "bench:compression": "node scripts/benchmark-compression.cjs",
+    "bench:disk": "node --expose-gc scripts/benchmark-disk-search.cjs",
+    "test:controls": "node tests/controls.cjs",
+    "test:modals": "node tests/modals.cjs",
+    "lint": "eslint main.js lib",
+    "check:privacy": "node scripts/privacy-check.cjs",
+    "version:set": "node scripts/version-bump.cjs",
+    "check:tag": "node scripts/check-tag.cjs",
+    "release:prepare": "pnpm check && pnpm lint && pnpm test && pnpm check:privacy && pnpm build && pnpm verify:release",
+    "package:zip": "node scripts/package-zip.cjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "0.4.2",
+    "fflate": "0.8.3",
+    "gifenc": "1.0.3",
+    "lucide": "1.8.0",
+    "marked": "17.0.5",
+    "playwright": "1.62.1",
+    "pngjs": "7.0.0"
+  },
+  "license": "MIT",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24 <25"
+  }
+}
