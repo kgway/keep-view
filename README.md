@@ -2,7 +2,7 @@
 
 Browse, filter, and manage notes in a Google Keep-style card view. Use Boolean tag queries, folder and date filters, full-text search, and bulk actions.
 
-![One workflow: 24 notes → project tags → exclude writing → search garden → select the two matches.](docs/media/demo-en.gif)
+![One workflow: 24 notes → project tags → exclude writing → search garden → select the two matches.](docs/media/demo-en.gif?v=initial-hold-3s)
 
 One workflow: 24 notes → project tags → exclude writing → search garden → select the two matches.
 
