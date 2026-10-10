@@ -1,27 +1,53 @@
+const {compileSource}=require('./compile-source.cjs');
 // Optional browser smoke test: set PLAYWRIGHT_MODULE to a Playwright installation.
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
+async function resize(page,size) {
+  await page.setViewportSize(size);
+  if(process.env.KEEP_VIEW_HOST_CSS) await page.evaluate(width=>document.body.classList.toggle('is-mobile',width<=500),size.width);
+}
 const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{recursive:true});
 (async () => {
   const browser = await chromium.launch({headless:true, ...(process.env.PLAYWRIGHT_CHANNEL ? {channel:process.env.PLAYWRIGHT_CHANNEL} : {})});
   try {
     const page = await browser.newPage({viewport:{width:1200,height:850},hasTouch:true});
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await page.setContent('<html><body class="workspace-leaf"><div id="view" class="keep-view-content" style="height:810px"></div></body></html>');
+    await page.setContent('<html><body class="workspace-leaf"><div class="workspace-leaf-content" data-type="keep-view"><div id="view" class="view-content keep-view-content" style="height:810px"></div></div></body></html>');
+    if(process.env.KEEP_VIEW_HOST_CSS) {
+      await page.addStyleTag({content:fs.readFileSync(process.env.KEEP_VIEW_HOST_CSS,'utf8')});
+      if(process.env.KEEP_VIEW_THEME_CSS) await page.addStyleTag({content:fs.readFileSync(process.env.KEEP_VIEW_THEME_CSS,'utf8')});
+      await page.evaluate(()=>document.body.classList.add('theme-light'));
+    }
     const dependencies=process.env.PLAYWRIGHT_MODULE?path.dirname(process.env.PLAYWRIGHT_MODULE):path.resolve('node_modules');
     await page.addScriptTag({path:path.join(dependencies,'marked/lib/marked.umd.js')});
     await page.addScriptTag({path:path.join(dependencies,'lucide/dist/umd/lucide.js')});
-    await page.addStyleTag({content:':root{--background-primary:#fff;--background-secondary:#f7f7f8;--background-modifier-border:#ddd;--background-modifier-hover:#eee;--text-normal:#222;--text-muted:#666;--text-faint:#888;--interactive-accent:#6958c7;--font-interface: sans-serif;--font-monospace:monospace} body{margin:12px;font-family:sans-serif}button,input,select{font:inherit}'});
+    await page.addStyleTag({content:':root{--background-primary:#fff;--background-secondary:#f7f7f8;--background-modifier-border:#ddd;--background-modifier-hover:#eee;--text-normal:#222;--text-muted:#666;--text-faint:#888;--interactive-accent:#6958c7;--font-interface: sans-serif;--font-monospace:monospace} body{margin:12px;width:auto;font-family:sans-serif}button,input,select{font:inherit}'});
+    // App styles size the workspace to the viewport; the standalone fixture's
+    // outer margin must not be added to that width.
+    if(process.env.KEEP_VIEW_HOST_CSS) await page.evaluate(()=>document.body.style.margin='0');
+    // ItemView.contentEl also carries .view-content inside the host leaf. Keep
+    // this default padding in the fixture even when app CSS is not supplied.
+    await page.addStyleTag({content:'.workspace-leaf-content .view-content { padding:12px 12px 32px; overflow:auto; }'});
     await page.addStyleTag({content:'button:not(:hover){background-color:rgb(250,200,220);background-image:linear-gradient(red,blue)}'});
-    await page.addStyleTag({content:fs.readFileSync(path.join(root,'styles.css'),'utf8')});
+    await page.addStyleTag({content:fs.readFileSync(process.env.KEEP_VIEW_PLUGIN_CSS||path.join(root,'styles.css'),'utf8')});
     // Reproduce the old Dataview snippet loading after the plugin stylesheet.
     await page.addStyleTag({content:`.kv-header { margin-bottom:14px; border-bottom:1px solid #ddd; }
       .workspace-leaf:has(.kv-body-wrapper) .markdown-rendered { width:100% !important; max-width:100% !important; padding-left:0 !important; padding-right:0 !important; }
       .markdown-rendered td,.markdown-rendered th { font-size:var(--table-text-size,20px); }`});
     if(process.env.KEEP_VIEW_LEGACY_CSS) await page.addStyleTag({content:fs.readFileSync(process.env.KEEP_VIEW_LEGACY_CSS,'utf8')});
+    // Reloaded host/theme styles must not restore ItemView's outer padding.
+    await page.addStyleTag({content:'.workspace-leaf-content .view-content { padding:12px 12px 32px; }'});
+    assert.deepEqual(await page.locator('#view').evaluate(el=>{
+      const style=getComputedStyle(el);return [style.paddingTop,style.paddingRight,style.paddingBottom,style.paddingLeft];
+    }),['0px','0px','0px','0px'],'Keep View replaces default ItemView padding; its header and cards own their spacing');
+    assert.deepEqual(await page.evaluate(()=>{
+      const leaf=document.createElement('div');leaf.className='workspace-leaf-content';leaf.dataset.type='unrelated-view';
+      const content=document.createElement('div');content.className='view-content';leaf.append(content);document.body.append(leaf);
+      const style=getComputedStyle(content),padding=[style.paddingTop,style.paddingRight,style.paddingBottom,style.paddingLeft];leaf.remove();return padding;
+    }),['12px','12px','32px','12px'],'Other ItemViews retain their default padding');
 
     await page.evaluate(() => {
       Element.prototype.createEl = function(tag, options={}) {
@@ -31,11 +57,12 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
         for (const key of ['type','placeholder','title','value','style']) if (options[key] !== undefined) el.setAttribute(key,options[key]);
         this.appendChild(el); return el;
       };
+      window.createEl=tag=>document.createElement(tag);
       Element.prototype.createDiv = function(options) {return this.createEl('div',options);};
       Element.prototype.createSpan = function(options) {return this.createEl('span',options);};
       Element.prototype.empty = function() {this.replaceChildren();};
       Element.prototype.addClass = function(cls) {this.classList.add(cls);};
-      window.module={exports:{}};
+      window.module={exports:{}};window.exports=window.module.exports;
       class MockModal {
         constructor(app) {this.app=app; this.contentEl=document.createElement('div');}
         open() {document.body.appendChild(this.contentEl);this.onOpen();window.lastOpenedModal=this;}
@@ -64,18 +91,19 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       app.fileManager={getNewFileParent:()=>({path:'/',children:[]})};
       app.vault.create=async(path,content)=>{exportsWritten.push({path,content});return {path};};
     });
-    const modules=Object.fromEntries(fs.readdirSync(path.join(root,'lib')).filter(name=>/\.(js|json)$/.test(name)).map(name=>['./lib/'+(name.endsWith('.json')?name:name.slice(0,-3)),name.endsWith('.json')?'module.exports='+fs.readFileSync(path.join(root,'lib',name),'utf8'):fs.readFileSync(path.join(root,'lib',name),'utf8')]));
+    const modules=Object.fromEntries(fs.readdirSync(path.join(root,'lib')).filter(name=>/\.(js|json)$/.test(name)).map(name=>['./lib/'+(name.endsWith('.json')?name:name.slice(0,-3)),name.endsWith('.json')?'module.exports='+fs.readFileSync(path.join(root,'lib',name),'utf8'):compileSource(fs.readFileSync(path.join(root,'lib',name),'utf8'))]));
     await page.evaluate(sources=>{
       const originalRequire=window.require,cache=new Map();
-      window.require=id=>{
+      window.require=id=>{id=id.replace(/\.js$/,'');
         if(id.startsWith('./') && !id.startsWith('./lib/')) id='./lib/'+id.slice(2);
         if(!Object.hasOwn(sources,id)) return originalRequire(id);
-        if(!cache.has(id)) {const module={exports:{}};cache.set(id,module);new Function('require','module',sources[id])(window.require,module);}
+        if(!cache.has(id)) {const module={exports:{}};cache.set(id,module);new Function('require','module','exports',sources[id])(window.require,module,module.exports);}
         return cache.get(id).exports;
       };
     },modules);
     await page.evaluate(()=>require('./lib/i18n').setLanguage('ja'));
-    await page.addScriptTag({content:fs.readFileSync(path.join(root,'main.js'),'utf8')+'\naddIcon(TREE_ICON,TREE_ICON_SVG);window.currentSettings={...DEFAULT_SETTINGS,showDateGuidance:false};'});
+    await page.addScriptTag({content:compileSource(fs.readFileSync(path.join(root,'main.js'),'utf8'))+'\naddIcon(TREE_ICON,TREE_ICON_SVG);window.currentSettings={...DEFAULT_SETTINGS,showDateGuidance:false};'});
+    assert.deepEqual(errors,[],'Compiled plugin source loads before mounting');
     // A new ItemView can open before Obsidian attaches its content to the workspace.
     await page.evaluate(()=>{
       window.initialRoot=document.createElement('div');
@@ -90,7 +118,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       [360,{groupByFolder:true,resultTreeOpen:{'仕事':true}},false],
       [1200,{sortField:'name',folderFilters:['仕事']},true]
     ]) {
-      await page.setViewportSize({width,height:850});
+      await resize(page,{width,height:850});
       await page.evaluate(({state,hidden})=>{
         controller.dispose();
         const host=document.getElementById('view');host.empty();host.style.display=hidden?'none':'';
@@ -105,7 +133,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       }
       await page.waitForFunction(()=>document.querySelector('.kv-masonry:not(.kv-layout-pending) .kv-card'),null,{timeout:4000});
       assert.ok(await page.locator('.kv-card').first().isVisible(),'Deferred opening paints without changing any controls');
-      assert.equal(await page.evaluate(()=>saved.sortField),state.sortField||'property');
+      assert.equal(await page.evaluate(()=>saved.sortField),state.sortField||'mtime');
       assert.deepEqual(await page.evaluate(()=>saved.folderFilters),state.folderFilters||[]);
     }
     await page.evaluate(()=>{
@@ -121,6 +149,9 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       window.controller=mountKeepView(app,document.getElementById('view').createDiv(),{},s=>window.saved=s,currentSettings);
     });
     await page.waitForFunction(()=>document.querySelector('.kv-card-preview h1'));
+    assert.equal(await page.locator('.keep-view-root').first().evaluate(el=>el.getBoundingClientRect().width),await page.locator('#view').evaluate(el=>el.clientWidth),'The plugin root uses the full content width');
+    assert.equal(await page.getByRole('button',{name:'更新日時',exact:true}).getAttribute('aria-pressed'),'true','A fresh view starts with modification time');
+    assert.equal(await page.evaluate(()=>saved.dateField),'mtime');
     assert.equal(await page.getByRole('button',{name:'作成日時',exact:true}).count(),1);
     assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.kv-header')).position),'static');
     assert.equal(await page.getByRole('combobox',{name:'プレビュー文字数',exact:true}).inputValue(),'150');
@@ -133,30 +164,35 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     assert.equal(await page.getByRole('button',{name:'更新日時',exact:true}).getAttribute('aria-pressed'),'true');
     await page.getByRole('button',{name:'作成日時',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('.kv-card-preview h1'));
-    const toolbarRows=await page.locator('.kv-toolbar > .kv-header-row').evaluateAll(rows=>rows.map(row=>Math.round(row.getBoundingClientRect().top)));
+    const toolbarRows=await page.locator('.kv-toolbar > .kv-header-row').evaluateAll(rows=>rows.map(row=>{const rect=row.getBoundingClientRect();return Math.round(rect.top+rect.height/2);}));
     assert.ok(Math.max(...toolbarRows)-Math.min(...toolbarRows)<=2,'Desktop toolbar fits one row');
     for(const [width,rows] of [[1120,1],[1024,2],[900,2],[760,3],[700,3],[560,3],[500,3],[440,4]]) {
-      await page.setViewportSize({width,height:850});
+      await resize(page,{width,height:850});
       await page.waitForTimeout(120);
       const layout=await page.evaluate(()=>{
         const top=selector=>Math.round(document.querySelector(selector).getBoundingClientRect().top);
         return {primary:top('.kv-primary-tools button'),sort:top('.kv-sort-tools'),date:top('.kv-date-range'),tag:top('.kv-no-tag'),overflow:document.getElementById('view').scrollWidth>document.getElementById('view').clientWidth,rightGap:document.querySelector('.kv-toolbar').getBoundingClientRect().right-document.querySelector('.kv-no-tag').getBoundingClientRect().right};
       });
       assert.equal(layout.overflow,false,`No toolbar overflow at ${width}px`);
+      const overlap=await page.locator('.kv-toolbar').evaluate(toolbar=>{
+        const boxes=[...toolbar.querySelectorAll('button,input,select')].map(el=>el.getBoundingClientRect()).filter(rect=>rect.width>0&&rect.height>0);
+        return boxes.some((a,index)=>boxes.slice(index+1).some(b=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1 && Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1));
+      });
+      assert.equal(overlap,false,'Toolbar controls do not overlap');
       assert.ok(Math.abs(layout.rightGap)<1,`Tagless stays at the right edge at ${width}px`);
-      if(rows===1) assert.ok(Math.abs(layout.primary-layout.date)<=3,JSON.stringify(layout));
-      if(rows===2) assert.ok(Math.abs(layout.primary-layout.sort)<=3 && layout.date>layout.sort,JSON.stringify(layout));
-      if(rows>=3) assert.ok(layout.sort>layout.primary && layout.date>layout.sort && Math.abs(layout.tag-(rows===3?layout.primary:layout.sort))<=3,JSON.stringify(layout));
+      if(!process.env.KEEP_VIEW_HOST_CSS && rows===1) assert.ok(Math.abs(layout.primary-layout.date)<=3,JSON.stringify(layout));
+      if(!process.env.KEEP_VIEW_HOST_CSS && rows===2) assert.ok(Math.abs(layout.primary-layout.sort)<=3 && layout.date>layout.sort,JSON.stringify(layout));
+      if(!process.env.KEEP_VIEW_HOST_CSS && rows>=3) assert.ok(layout.sort>layout.primary && layout.date>layout.sort && Math.abs(layout.tag-(rows===3?layout.primary:layout.sort))<=3,JSON.stringify(layout));
     }
     for(const width of [360,1200]) {
-      await page.setViewportSize({width,height:850});await page.waitForTimeout(150);
+      await resize(page,{width,height:850});await page.waitForTimeout(150);
       const gap=await page.evaluate(()=>{
         const bottom=Math.max(...[...document.querySelectorAll('.kv-card')].map(card=>card.getBoundingClientRect().bottom));
         return document.querySelector('.kv-load-more-wrap button').getBoundingClientRect().top-bottom;
       });
       assert.ok(gap>=23,`Card-to-pagination gap at ${width}px: ${gap}`);
     }
-    await page.setViewportSize({width:1200,height:850});
+    await resize(page,{width:1200,height:850});
     await page.waitForTimeout(150);
     const gaps=await page.evaluate(()=>{
       const rect=selector=>document.querySelector(selector).getBoundingClientRect();
@@ -262,7 +298,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     const mousePage=await browser.newPage({hasTouch:false});
     await mousePage.setContent('<style>:root{--text-faint:#888;--background-secondary:#f8f8f8;--text-normal:#222}</style><div class="keep-view-content"><div class="keep-view-root"><div class="kv-card" style="width:200px;height:100px"><div class="kv-scroll-rail" style="height:80px"><div class="kv-scroll-thumb" style="height:40px"></div></div></div></div></div>');
     await mousePage.addStyleTag({content:fs.readFileSync(path.join(root,'styles.css'),'utf8')});
-    await mousePage.addScriptTag({content:"(()=>{const module={exports:{}};const require=()=>({});\n"+fs.readFileSync(path.join(root,'lib/ui.js'),'utf8')+"\nwindow.releaseHover=module.exports.suppressHoverTooltips(document.querySelector('.keep-view-content'));})();"});
+    await mousePage.addScriptTag({content:"(()=>{const module={exports:{}};const exports=module.exports;const require=()=>({});\n"+compileSource(fs.readFileSync(path.join(root,'lib/ui.js'),'utf8'))+"\nwindow.releaseHover=module.exports.suppressHoverTooltips(document.querySelector('.keep-view-content'));})();"});
     const mouseThumb=mousePage.locator('.kv-scroll-thumb');
     const mouseRest=await mouseThumb.evaluate(el=>getComputedStyle(el).backgroundColor);
     await mousePage.evaluate(()=>{const tip=document.createElement('div');tip.className='tooltip';tip.textContent='説明';tip.style.pointerEvents='none';document.body.appendChild(tip);});
@@ -305,9 +341,9 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     await page.evaluate(()=>document.getElementById('view').scrollTop=0);
     await page.waitForTimeout(220);
     await page.locator('.kv-selection-bar').screenshot({path:path.join(screenshots,'preview-selection.png')});
-    await page.setViewportSize({width:360,height:850});
+    await resize(page,{width:360,height:850});
     await page.locator('.kv-selection-bar').screenshot({path:path.join(screenshots,'preview-selection-mobile.png')});
-    await page.setViewportSize({width:1200,height:850});
+    await resize(page,{width:1200,height:850});
     await page.evaluate(()=>{
       window.bulkWrites=[];window.properties={};window.originalCache=app.metadataCache.getFileCache;
       const paths=[...document.querySelectorAll('.kv-card.is-selected')].map(el=>el.dataset.path);
@@ -504,11 +540,11 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     await page.getByRole('button',{name:'フォルダを移動',exact:true}).click();
     assert.equal(await page.locator('.kv-move-folder[data-destination="移動先"] input').isChecked(),true,'Destination draft survives switching menus');
     assert.equal(await page.evaluate(()=>bulkWrites.length===writesBeforeCombined && movedFiles.length===0),true);
-    await page.setViewportSize({width:320,height:850});
+    await resize(page,{width:320,height:850});
     const confirmRow=await page.locator('.kv-selection-bar').evaluate(bar=>({move:bar.querySelector('.kv-selection-move').getBoundingClientRect().top,confirm:bar.querySelector('.kv-selection-confirm').getBoundingClientRect().top}));
     assert.ok(Math.abs(confirmRow.move-confirmRow.confirm)<2,'Confirm remains next to move on mobile '+JSON.stringify(await page.locator('.kv-selection-bar').evaluate(bar=>({width:bar.clientWidth,gap:getComputedStyle(bar).gap,children:[...bar.children].map(el=>({text:el.textContent,width:el.getBoundingClientRect().width,margin:getComputedStyle(el).marginLeft,padding:getComputedStyle(el).padding}))}))));
     await page.locator('.kv-selection-bar').screenshot({path:path.join(screenshots,'preview-selection-confirm-mobile.png')});
-    await page.setViewportSize({width:1200,height:850});
+    await resize(page,{width:1200,height:850});
     await page.getByRole('button',{name:'決定',exact:true}).click();
     await page.waitForFunction(()=>movedFiles.length===1 && document.querySelector('.kv-selection-bar').hidden);
     assert.equal(await page.evaluate(()=>files.some(file=>file.path==='移動先/仕事/子フォルダ/メモ1.md')),true,'Folder movement preserves nested paths');
@@ -606,7 +642,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     assert.equal(await page.locator('.kv-dropdown').count(),0);
     await page.evaluate(()=> { document.getElementById('view').empty();window.controller=mountKeepView(app,document.getElementById('view').createDiv(),saved,s=>window.saved=s); });
     await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===14);
-    await page.setViewportSize({width:360,height:850});
+    await resize(page,{width:360,height:850});
     await page.getByRole('combobox',{name:'表示密度'}).focus();
     assert.ok(await page.getByRole('combobox',{name:'表示密度'}).evaluate(el=>{
       const style=getComputedStyle(el);
@@ -619,7 +655,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     assert.equal(overflow,false);
     await page.evaluate(()=>document.getElementById('view').scrollTop=0);
     for(const width of [320,360]) {
-      await page.setViewportSize({width,height:850});
+      await resize(page,{width,height:850});
       await page.getByLabel('開始日',{exact:true}).fill('2020-01-01');
       await page.getByLabel('終了日',{exact:true}).fill('2030-01-01');
       const bounds=await page.evaluate(()=>{
@@ -766,7 +802,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     await page.addStyleTag({content:'body.is-mobile button { border: none; }'});
     await page.evaluate(()=>document.body.classList.add('is-mobile'));
     for(const width of [320,360,1200]) {
-      await page.setViewportSize({width,height:850});
+      await resize(page,{width,height:850});
       const folder=await page.locator('.kv-result-folder').evaluate(el=>{
         const style=getComputedStyle(el);return {border:style.borderTopWidth,borderStyle:style.borderTopStyle,background:style.backgroundColor,base:getComputedStyle(el.closest('.keep-view-root')).getPropertyValue('--kv-bg').trim()};
       });
@@ -776,7 +812,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     }
     await page.evaluate(()=>indexController.dispose());
     for(const progressWidth of [1000,360,320]) {
-    await page.setViewportSize({width:progressWidth,height:850});
+    await resize(page,{width:progressWidth,height:850});
     await page.evaluate(()=>{
       window.advanceSearch=null;
       const files=['A/0.md','A/1.md','B/2.md','B/3.md','4.md','5.md'].map((path,i)=>({path,basename:String(i),parent:{path:path.includes('/')?path[0]:'/'},stat:{mtime:1,size:30,ctime:1},i}));
@@ -858,7 +894,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===6 && !document.querySelector('.kv-search-status-slot'));
     await page.waitForTimeout(100);
     const oldColumns=await page.locator('.kv-masonry').evaluateAll(grids=>grids.map(grid=>grid.dataset.columns));
-    await page.setViewportSize({width:progressWidth===1000?360:1000,height:850});
+    await resize(page,{width:progressWidth===1000?360:1000,height:850});
     await page.waitForTimeout(100);
     assert.notDeepEqual(await page.locator('.kv-masonry').evaluateAll(grids=>grids.map(grid=>grid.dataset.columns)),oldColumns,'Cancelled paints must not disconnect the replacement view layouts');
     await page.evaluate(()=>progressController.dispose());
@@ -954,7 +990,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       await assertAdd(page.locator('.kv-add-btn').first());
     };
     for(const width of [1200,360,320]) {
-      await page.setViewportSize({width,height:850});
+      await resize(page,{width,height:850});
       await page.evaluate(width=>{
         require('./lib/i18n').setLanguage('en');document.body.classList.toggle('is-mobile',width<500);
         document.getElementById('view').empty();document.getElementById('view').scrollTop=0;window.scrollTo(0,0);
@@ -1008,7 +1044,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       await page.evaluate(()=>languageController.dispose());
     }
     for(const width of [1200,360]) {
-    await page.setViewportSize({width,height:850});
+    await resize(page,{width,height:850});
     await page.evaluate(width=>{
       require('./lib/i18n').setLanguage('ja');document.body.classList.toggle('is-mobile',width<500);document.getElementById('view').empty();window.scrollTo(0,0);
       window.largeTreeReads=0;
@@ -1077,23 +1113,34 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'No popup before the view is attached');
     assert.equal(await page.evaluate(()=>guideShown.size),0);
     await page.evaluate(()=>document.getElementById('view').appendChild(guideRoot));
-    await page.waitForFunction(()=>document.querySelector('.kv-date-guidance-modal') && document.querySelectorAll('.kv-card').length===7);
+    await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===7);
+    assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'Fresh modification-time views do not prompt about creation properties');
+    assert.equal(await page.evaluate(()=>guideShown.size),0);
+    await page.getByRole('button',{name:'作成日時',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.kv-date-guidance-modal'));
     assert.match(await page.locator('.kv-date-guidance-modal').textContent(),/6 件/);
     assert.match(await page.locator('.kv-date-guidance-modal').textContent(),/未設定 3 件・空欄または無効 3 件/);
     assert.match(await page.locator('.kv-date-guidance-modal').textContent(),/未設定ノートが 1 件/);
     assert.equal(await page.evaluate(()=>guideWrites),0,'Guidance only reads existing metadata and filenames');
     await page.locator('.kv-date-guidance-modal').getByRole('button',{name:'閉じる',exact:true}).click();
+    const creationFallbackDay=await page.evaluate(()=>{const d=new Date(fixtureTime);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');});
+    await page.getByLabel('開始日',{exact:true}).fill(creationFallbackDay);
+    await page.getByLabel('終了日',{exact:true}).fill(creationFallbackDay);
+    await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===6);
+    assert.equal(await page.evaluate(()=>guideWrites),0,'Date filtering uses file creation time without writing properties');
+    await page.getByRole('button',{name:'期間を解除',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===7);
     await page.evaluate(()=>guideController.refreshSettings());await page.waitForTimeout(250);
     assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'A normal dismissal does not repeat during this session');
     await page.evaluate(()=>{
       guideController.dispose();document.getElementById('view').empty();
-      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{},()=>{},guideSettings,null,{dateGuidanceShown:guideShown});
+      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{sortField:'property',dateField:'property'},()=>{},guideSettings,null,{dateGuidanceShown:guideShown});
     });
     await page.waitForTimeout(250);
     assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'Another view shares the already-shown session state');
     await page.evaluate(()=>{
       guideController.dispose();document.getElementById('view').empty();guideShown.clear();
-      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{},()=>{},guideSettings,null,{dateGuidanceShown:guideShown,onHideDateGuidance:()=>window.guideSaved={...guideSettings}});
+      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{sortField:'property',dateField:'property'},()=>{},guideSettings,null,{dateGuidanceShown:guideShown,onHideDateGuidance:()=>window.guideSaved={...guideSettings}});
     });
     await page.waitForFunction(()=>document.querySelector('.kv-date-guidance-modal'));
     await page.locator('.kv-date-guidance-modal').getByRole('button',{name:'移行ツールを開く',exact:true}).click();
@@ -1115,7 +1162,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     await page.evaluate(()=>{
       guideController.dispose();document.getElementById('view').empty();
       window.guideSettings=require('./lib/saved-data').readSettings(guideSaved,DEFAULT_SETTINGS);
-      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{},()=>{},guideSettings);
+      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{sortField:'property',dateField:'property'},()=>{},guideSettings);
     });
     await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===7);await page.waitForTimeout(200);
     assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'Opt-out persists across a settings round-trip and new session');
@@ -1159,6 +1206,23 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     const checkGeometry=await hoverPage.locator('.kv-dropdown-checkbox').evaluateAll(els=>els.map(el=>{const s=getComputedStyle(el.parentElement.querySelector('.kv-checkbox-mark'));return {box:[el.getBoundingClientRect().width,el.getBoundingClientRect().height],mark:[s.display,s.width,s.height,s.top,s.left,s.margin,s.padding,s.transform,s.transformOrigin]};}));
     assert.deepEqual(checkGeometry[0],checkGeometry[1],'Shared checkbox geometry survives parent selection and theme rules');
     await hoverPage.close();
+
+    await resize(page,{width:1200,height:850});
+    await page.evaluate(()=>{
+      controller.dispose();document.body.replaceChildren();
+      const host=document.body.createDiv({cls:'keep-view-content'});host.style.height='810px';
+      window.dragSaved={};
+      window.controller=mountKeepView(app,host,{
+        searchTree:{type:'and',id:'root',children:[{type:'tag',id:'drag-a',tag:'a'},{type:'tag',id:'drag-b',tag:'b'}]}
+      },state=>window.dragSaved=state,{...DEFAULT_SETTINGS,showDateGuidance:false});
+    });
+    const dragHandle=await page.locator('.kv-drag-handle').nth(1).boundingBox();
+    const dropLine=await page.locator('.kv-tree-area > .kv-node > .kv-drop-line').first().boundingBox();
+    await page.mouse.move(dragHandle.x+dragHandle.width/2,dragHandle.y+dragHandle.height/2);
+    await page.mouse.down();await page.mouse.move(dropLine.x+dropLine.width/2,dropLine.y+dropLine.height/2,{steps:8});
+    assert.equal(await page.locator('.kv-drop-line.is-visible').count(),1,'Tag drag highlights the nearest insertion target');
+    await page.mouse.up();await page.waitForFunction(()=>dragSaved.searchTree.children[0].id==='drag-b');
+    assert.equal(await page.locator('.kv-drag-ghost').count(),0);assert.equal(await page.locator('.kv-node-row.is-dragging').count(),0);
 
     await page.evaluate(()=>{
       document.body.replaceChildren();

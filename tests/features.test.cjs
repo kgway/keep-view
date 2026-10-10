@@ -1,11 +1,13 @@
+const {compileSource}=require('./compile-source.cjs');
 const {installModules}=require('./module-loader.cjs');
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+function runSource(code,context) {return vm.runInNewContext(compileSource(code),context);}
 const source = fs.readFileSync(require('node:path').join(__dirname,'..','main.js'),'utf8');
 const sandbox={module:{exports:{}},require:()=>({Plugin:class{},ItemView:class{},Modal:class{},PluginSettingTab:class{}}),Date,console};
-vm.runInNewContext(source+"\nconst {moveSelectedNotes}=require('./lib/note-operations');\n"+'module.exports={parseIsoTimestamp,timestampFromFilename,migrateCreated,masonryPositions,makePathExport,resultFolderTree,markdownBody,previewLengths,createNote,localIsoTimestamp,editNoteTags,restoreTagChanges,moveSelectedNotes,moveSelection,trashSelectedNotes,DEFAULT_SETTINGS};',installModules(sandbox));
+runSource(source+"\nconst {moveSelectedNotes}=require('./lib/note-operations');\n"+'module.exports={parseIsoTimestamp,timestampFromFilename,migrateCreated,masonryPositions,makePathExport,resultFolderTree,markdownBody,previewLengths,createNote,localIsoTimestamp,editNoteTags,restoreTagChanges,moveSelectedNotes,moveSelection,trashSelectedNotes,DEFAULT_SETTINGS};',installModules(sandbox));
 const {parseIsoTimestamp:parse,timestampFromFilename:fromName,migrateCreated,masonryPositions,makePathExport}=sandbox.module.exports;
 
 test('result tree includes all pages, nested folders and root notes in sorted input order',()=>{
@@ -37,7 +39,7 @@ test('plugin registers the folded-note bulb for both ribbon and tab',async()=>{
     addSettingTab(){}
   }
   const context={module:{exports:{}},require:()=>({Plugin,ItemView:class{},Modal:class{},PluginSettingTab:class{},addIcon:(id,svg)=>icons.set(id,svg)}),console};
-  vm.runInNewContext(source,installModules(context));
+  runSource(source,installModules(context));
   const plugin=new context.module.exports();await plugin.onload();
   assert.equal(plugin.ribbonLabel,'Keep View Explorer');
   assert.equal(plugin.openCommand,'Open Keep View Explorer');
@@ -54,7 +56,7 @@ test('language defaults follow the app and saved choices follow later host chang
       registerView(){} addRibbonIcon(){} addCommand(){} addSettingTab(){}
     }
     const context={module:{exports:{}},require:()=>({Plugin,ItemView:class{},Modal:class{},PluginSettingTab:class{},addIcon(){},getLanguage:()=>appLanguage}),console};
-    vm.runInNewContext(source,installModules(context));
+    runSource(source,installModules(context));
     const plugin=new context.module.exports();await plugin.onload();
     assert.equal(context.require('./lib/i18n').getLocale(),expected);
   }
@@ -69,8 +71,8 @@ test('language changes persist across reloads and refresh open views only when t
     registerView(){} addRibbonIcon(){} addCommand(){} addSettingTab(){}
   }
   const context={module:{exports:{}},require:()=>({Plugin,ItemView:class{},Modal:class{},PluginSettingTab:class{},addIcon(){},getLanguage:()=>appLanguage}),console};
-  vm.runInNewContext(source,installModules(context));
-  vm.runInNewContext('module.exports.ViewForTest=KeepView;',context);
+  runSource(source,installModules(context));
+  runSource('module.exports.ViewForTest=KeepView;',context);
   const locale=()=>context.require('./lib/i18n').getLocale();
   let plugin=new context.module.exports();await plugin.onload();await plugin.saveQueue;
   assert.equal(locale(),'ja');assert.equal(data.settings.obsidianLanguage,'ja');
@@ -117,7 +119,7 @@ test('settings use blank defaults, two language choices, toggles and the request
     addButton(callback){const button={setButtonText(value){this.text=value;return this;},onClick(fn){this.click=fn;return this;}};callback(button);this.buttons.push(button);return this;}
   }
   const context={module:{exports:{}},require:()=>({Plugin:class{},ItemView:class{},Modal:class{},PluginSettingTab:class{},Notice:class{},Setting}),Date,console};
-  vm.runInNewContext(source+'\nmodule.exports=KeepViewSettings;',installModules(context));
+  runSource(source+'\nmodule.exports=KeepViewSettings;',installModules(context));
   const settings={dateProperty:'imported',previewLengths:[90],previewMode:'source',creationTimeZone:'UTC'};
   let saves=0;const tab=new context.module.exports({}, {settings,saveSettings(){saves++;}});
   const definitions=tab.getSettingDefinitions();
@@ -166,7 +168,7 @@ test('settings refresh uses the declarative host API only on supported versions'
   let supported=false,updates=0,fallbacks=0;
   class PluginSettingTab {update(){updates++;}}
   const context={module:{exports:{}},require:()=>({Plugin:class{},ItemView:class{},Modal:class{},PluginSettingTab,requireApiVersion:()=>supported}),console};
-  vm.runInNewContext(source+'\nmodule.exports=KeepViewSettings;',installModules(context));
+  runSource(source+'\nmodule.exports=KeepViewSettings;',installModules(context));
   const tab=new context.module.exports({},{});tab.display=()=>fallbacks++;
   tab.redisplay();assert.equal(fallbacks,1);assert.equal(updates,0);
   supported=true;tab.redisplay();assert.equal(fallbacks,1);assert.equal(updates,1);
@@ -175,7 +177,7 @@ test('settings refresh uses the declarative host API only on supported versions'
 test('standalone migration helpers handle write errors without plugin module globals',async()=>{
   const helpers=source.split('// BEGIN MIGRATION HELPERS')[1].split('\n').slice(1).join('\n').split('// END MIGRATION HELPERS')[0];
   const context={module:{exports:{}},msg:key=>key};
-  vm.runInNewContext(helpers+'\nmodule.exports=migrateCreated;',context);
+  runSource(helpers+'\nmodule.exports=migrateCreated;',context);
   const file={path:'Notes/2026-01-01T12_00_00Z.md',basename:'2026-01-01T12_00_00Z'};
   const app={vault:{getMarkdownFiles:()=>[file]},metadataCache:{getFileCache:()=>({})},fileManager:{processFrontMatter:async()=>{throw Error('write failed');}}};
   const result=await context.module.exports(app,{apply:true});
@@ -372,9 +374,9 @@ test('deletion defaults to confirmation and only trashes the exact reviewed Mark
 
 test('fast search can be disabled without loading storage, and cache deletion pauses every open view',async()=>{
   const context={module:{exports:{}},require:()=>({Plugin:class{},ItemView:class{},Modal:class{},PluginSettingTab:class{}}),Date,console,CompressionStream,DecompressionStream};
-  vm.runInNewContext(source,installModules(context));
+  runSource(source,installModules(context));
   const plugin=new context.module.exports();plugin.settings={fastSearch:false};plugin.manifest={dir:'plugins/keep-view'};
-  vm.runInNewContext('module.exports.ViewForTest=KeepView;',context);
+  runSource('module.exports.ViewForTest=KeepView;',context);
   const changes=[],events=[],disk=new Map();
   const controllers=[0,1].map(id=>({setSearchIndex(index,options){changes.push({id,index,options});}}));
   plugin.app={vault:{on:(event,callback)=>{events.push(event);return callback;},adapter:{exists:async path=>disk.has(path),remove:async path=>disk.delete(path)}},workspace:{getLeavesOfType:()=>controllers.map(controller=>({view:Object.assign(Object.create(context.module.exports.ViewForTest.prototype),{controller})}))}};

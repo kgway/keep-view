@@ -17,9 +17,9 @@ Prefer extending an existing component over introducing another variant. Keep di
 
 ## Build and verify
 
-Use `pnpm install --frozen-lockfile`, `pnpm test` and `pnpm build`. esbuild is a development dependency; it bundles the source modules into `dist/keep-view/main.js`, with only `obsidian` left external. Users install the contents of `dist/keep-view`, not the source entry point. Desktop and mobile receive the same self-contained JavaScript file.
+Use `pnpm install --frozen-lockfile`, `pnpm test` and `pnpm build`. Sources use ES Modules; esbuild bundles them into `dist/keep-view/main.js`, with only `obsidian` left external. The built CommonJS entry exports the plugin class. Users install the contents of `dist/keep-view`, not the source entry point. Desktop and mobile receive the same self-contained JavaScript file.
 
-`pnpm exec playwright install chromium` installs the test browser. `pnpm test:ui` runs the browser integration suite. Set `PLAYWRIGHT_MODULE` when Playwright is installed elsewhere and optionally `PLAYWRIGHT_CHANNEL=msedge`. `KEEP_VIEW_LEGACY_CSS` loads the old snippet to check compatibility. The browser and unit harnesses execute the real source modules with explicit Obsidian mocks. Also verify the built entry point loads without local runtime dependencies.
+`pnpm exec playwright install chromium` installs the test browser. `pnpm test:ui` runs the browser integration suite. Set `PLAYWRIGHT_MODULE` when Playwright is installed elsewhere and optionally `PLAYWRIGHT_CHANNEL=msedge`. `KEEP_VIEW_LEGACY_CSS` loads the old snippet to check compatibility. Optional `KEEP_VIEW_HOST_CSS` and `KEEP_VIEW_THEME_CSS` load locally supplied app/theme styles; `KEEP_VIEW_PLUGIN_CSS` supports comparison with a previous release. The browser and VM harnesses compile the real source modules for explicit Obsidian mocks; pure modules also run directly in Node.js. Also verify the built entry point loads without local runtime dependencies.
 
 Progress publishes only a settled prefix of the requested sort order. Tree branches wait for a complete top-level folder. Existing card grids append without remounting; obsolete paints must check the run and connected container before touching layouts.
 

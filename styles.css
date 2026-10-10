@@ -462,9 +462,12 @@ body.theme-dark .kv-card {
 }
 
 
-.keep-view-content { display: block !important; overflow: auto; padding: 0 !important; container-type: inline-size; }
+/* ItemView adds its own padding through the host leaf. Keep spacing inside the
+   plugin header and cards, including when host styles load after this file. */
+.keep-view-content,
+.workspace-leaf-content .view-content.keep-view-content { display: block; overflow: auto; padding: 0; container-type: inline-size; }
 .keep-view-content > .keep-view-root { display: block; height: auto; overflow: visible; }
-.keep-view-content .keep-view-root > .kv-controls { position: static !important; inset: auto !important; }
+.keep-view-content .keep-view-root > .kv-controls { position: static; inset: auto; }
 .keep-view-root .kv-body-wrapper { padding-left: 16px; padding-right: 16px; }
 .keep-view-root .kv-header { padding-left: 16px; padding-right: 16px; padding-bottom: 0; }
 .keep-view-root .kv-card:focus-visible { outline: 2px solid var(--interactive-accent); }
@@ -558,9 +561,9 @@ body.theme-dark .kv-card {
 .kv-card-preview.markdown-rendered input[type=checkbox] { position: relative; margin: 0 .35em 0 0; vertical-align: middle; }
 .kv-card-preview.markdown-rendered blockquote { margin-inline: 0; padding-inline-start: .5em; }
 .kv-card-preview.is-source { white-space: pre-wrap; font-family: var(--font-monospace); font-size: 12px; }
-.kv-preview-wrap { position: relative; display: grid; grid-template-columns: minmax(0,1fr) 16px; column-gap: 4px; margin-right: -6px; }
-.keep-view-content .keep-view-root .kv-card-preview { grid-column: 1; min-width: 0; box-sizing: border-box; overflow: auto; margin: 0 !important; padding: 0 !important; scrollbar-width: none !important; }
-.keep-view-content .kv-card-preview::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+.kv-preview-wrap { position: relative; display: grid; grid-template-columns: minmax(0,1fr) 16px; gap: 0 4px; margin-right: -6px; }
+.keep-view-content .keep-view-root .kv-card-preview { grid-column: 1; min-width: 0; box-sizing: border-box; overflow: auto; margin: 0; padding: 0; scrollbar-width: none; }
+.keep-view-content .kv-card-preview::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .kv-scroll-rail { position: relative; grid-column: 2; grid-row: 1; align-self: start; right: 0; top: 0; width: 16px; touch-action: none; cursor: grab; z-index: 1; }
 .kv-scroll-rail[hidden] { display: none; }
 .kv-scroll-thumb { position: absolute; right: 0; top: 0; width: 4px; border-radius: 999px; background: var(--kv-scroll-color, var(--kv-text-faint)); }
@@ -604,7 +607,7 @@ body.theme-dark .kv-card {
   .kv-toolbar .kv-date-range { grid-area: 2 / 1 / 3 / -1; width: 310px; }
 }
 @container (max-width: 740px) {
-  .kv-toolbar { display: grid; grid-template-columns: 36px 36px minmax(56px,58px) minmax(62px,66px) 36px minmax(0,1fr) 36px 36px; column-gap: 1px; row-gap: 8px; }
+  .kv-toolbar { display: grid; grid-template-columns: 36px 36px minmax(56px,58px) minmax(62px,66px) 36px minmax(0,1fr) 36px 36px; gap: 8px 1px; }
   .kv-toolbar .kv-primary-tools, .kv-toolbar > .kv-view-actions { display: contents; }
   .kv-primary-tools > button:nth-child(1) { grid-area: 1 / 1; }
   .kv-primary-tools > button:nth-child(2) { grid-area: 1 / 2; }
@@ -623,7 +626,7 @@ body.theme-dark .kv-card {
   .kv-controls .kv-sort-tools .kv-segment { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 30px; min-height: 30px; max-height: 30px; line-height: 1; padding: 0 4px; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
 }
 @container (max-width: 320px) {
-  .kv-toolbar { column-gap: 0; grid-template-columns: 36px 36px 54px 54px 36px minmax(0,1fr) 36px 36px; }
+  .kv-toolbar { gap: 8px 0; grid-template-columns: 36px 36px 54px 54px 36px minmax(0,1fr) 36px 36px; }
   .kv-controls .kv-primary-tools select { font-size: 10px; padding-inline: 1px; }
   .kv-controls .kv-primary-tools .kv-density-select { font-size: 10px; padding-inline: 1px; }
   .kv-controls .kv-sort-tools .kv-segment { width: 50px; padding-inline: 3px; font-size: 10px; }
@@ -657,21 +660,20 @@ body.theme-dark .kv-card {
 .kv-card-preview.markdown-rendered .mermaid svg { max-width: none; max-height: none; }
 .keep-view-root .kv-card-preview.markdown-rendered :is(svg text,.mermaid .nodeLabel,.mermaid .edgeLabel,.mermaid .label,.mermaid foreignObject p) { font-size: 14px; }
 
-/* The original Dataview snippet may still be enabled. Keep native view spacing
-   and preview typography independent of those broad Markdown rules. */
-.keep-view-content .keep-view-root > .kv-header { margin-block: 0 !important; border-bottom: 0 !important; padding-bottom: 0 !important; }
-.keep-view-content .keep-view-root > .kv-result-actions { margin-block: 0 !important; padding-block: 16px !important; }
-.keep-view-content .keep-view-root > .kv-body-wrapper:not(.kv-load-more-wrap) { margin-top: 0 !important; padding-top: 0 !important; }
+/* Scope native view spacing and preview typography above broad Markdown rules. */
+.keep-view-content .keep-view-root > .kv-header { margin-block: 0; border-bottom: 0; padding-bottom: 0; }
+.keep-view-content .keep-view-root > .kv-result-actions { margin-block: 0; padding-block: 16px; }
+.keep-view-content .keep-view-root > .kv-body-wrapper:not(.kv-load-more-wrap) { margin-top: 0; padding-top: 0; }
 .keep-view-content .keep-view-root .kv-card { --kv-date-ink: color-mix(in srgb, var(--text-faint) 80%, var(--kv-card-bg)); }
-.keep-view-content .keep-view-root .kv-card-date { color: var(--kv-date-ink) !important; }
-.keep-view-content .keep-view-root .kv-scroll-thumb { background: color-mix(in srgb, var(--kv-date-ink) 45%, var(--kv-card-bg)) !important; }
-.keep-view-content .keep-view-root .kv-scroll-rail.is-dragging .kv-scroll-thumb { background: color-mix(in srgb, var(--kv-date-ink) 75%, var(--kv-card-bg)) !important; }
-.keep-view-content .keep-view-root .kv-card-preview.markdown-rendered { --font-text-size: 14px; --table-text-size: 14px; --code-size: 14px; font-size: 14px !important; }
-.keep-view-content .keep-view-root .kv-card-preview :is(table,thead,tbody,tr,th,td,th *,td *,svg text,svg tspan,.mermaid .label,.mermaid .nodeLabel,.mermaid .edgeLabel,.mermaid foreignObject *) { font-size: 14px !important; }
-.keep-view-content .keep-view-root .kv-card-preview.markdown-rendered h1 { padding-left: 0 !important; }
+.keep-view-content .keep-view-root .kv-card-date { color: var(--kv-date-ink); }
+.keep-view-content .keep-view-root .kv-scroll-thumb { background: color-mix(in srgb, var(--kv-date-ink) 45%, var(--kv-card-bg)); }
+.keep-view-content .keep-view-root .kv-scroll-rail.is-dragging .kv-scroll-thumb { background: color-mix(in srgb, var(--kv-date-ink) 75%, var(--kv-card-bg)); }
+.keep-view-content .keep-view-root .kv-card-preview.markdown-rendered { --font-text-size: 14px; --table-text-size: 14px; --code-size: 14px; font-size: 14px; }
+.keep-view-content .keep-view-root .kv-card-preview :is(table,thead,tbody,tr,th,td,th *,td *,svg text,svg tspan,.mermaid .label,.mermaid .nodeLabel,.mermaid .edgeLabel,.mermaid foreignObject *) { font-size: 14px; }
+.keep-view-content .keep-view-root .kv-card-preview.markdown-rendered h1 { padding-left: 0; }
 
 @media (hover: hover) and (pointer: fine) {
-  .keep-view-content .keep-view-root .kv-scroll-rail:hover .kv-scroll-thumb { background: color-mix(in srgb, var(--kv-date-ink) 75%, var(--kv-card-bg)) !important; }
+  .keep-view-content .keep-view-root .kv-scroll-rail:hover .kv-scroll-thumb { background: color-mix(in srgb, var(--kv-date-ink) 75%, var(--kv-card-bg)); }
 }
 .kv-selection-bar .kv-selection-confirm { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
 .kv-result-actions > .kv-collapse-all { margin-left: 10px; margin-right: auto; }
@@ -744,7 +746,7 @@ body.theme-dark .kv-card {
    Restrict suppression to Keep View surfaces so other plugins are unaffected. */
 body.kv-hide-tooltips .tooltip { display: none; }
 
-.keep-view-content .keep-view-root > .kv-load-more-wrap { padding-top: 24px !important; }
+.keep-view-content .keep-view-root > .kv-load-more-wrap { padding-top: 24px; }
 .keep-view-root .kv-selection-confirm[hidden] { display: none; }
 .keep-view-root .kv-card :is(.kv-card-title,.kv-card-preview,.kv-card-preview *) { user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; }
 .kv-selection-bar { flex-wrap: wrap; }

@@ -1,3 +1,4 @@
+const {compileSource}=require('./compile-source.cjs');
 const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
@@ -68,7 +69,7 @@ const geometry=el=>{
         Element.prototype.createSpan=function(options){return this.createEl('span',options);};
         Element.prototype.createDiv=function(options){return this.createEl('div',options);};
         const module={exports:{}};
-        new Function('require','module',source)(id=>id==='obsidian'?{setIcon(){}}:{t:key=>key},module);
+        new Function('require','module','exports',source)(id=>id==='obsidian'?{setIcon(){}}:{t:key=>key},module,module.exports);
         const popup=document.body.createEl('div',{cls:'keep-view-root kv-dropdown'});
         popup.style.cssText='position:relative;inset:auto;margin:24px;width:280px';
         for(const [name,cls,depth] of [['Filter','',0],['Move','kv-move-folder',1],['Tags','is-selected',0]]) {
@@ -76,7 +77,7 @@ const geometry=el=>{
           if(cls)item.classList.add(cls);
           let checked=true;item.onclick=()=>{checked=!checked;item.querySelector('input').checked=checked;};
         }
-      },fs.readFileSync(path.join(root,'lib/ui.js'),'utf8'));
+      },compileSource(fs.readFileSync(path.join(root,'lib/ui.js'),'utf8')));
       const offsets=await page.locator('.kv-dropdown-checkbox').evaluateAll(els=>els.map(el=>{
         const input=el.getBoundingClientRect(),mark=el.parentElement.querySelector('.kv-checkbox-mark').getBoundingClientRect();
         return {box:[input.width,input.height],mark:[mark.left-input.left,mark.top-input.top,mark.width,mark.height],native:getComputedStyle(el,'::after').display};

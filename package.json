@@ -1,8 +1,8 @@
 {
   "name": "obsidian-keep-view",
-  "version": "1.43.4",
+  "version": "1.43.8",
   "private": true,
-  "description": "Browse and organize Markdown notes as cards.",
+  "description": "Browse, filter, and manage notes in a Google Keep-style card view. Use Boolean tag queries, folder and date filters, full-text search, and bulk actions.",
   "scripts": {
     "check": "node --check main.js",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
@@ -40,5 +40,6 @@
   "packageManager": "pnpm@11.19.0",
   "engines": {
     "node": ">=24 <25"
-  }
+  },
+  "type": "module"
 }
