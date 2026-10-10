@@ -38,7 +38,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       window.module={exports:{}};
       class MockModal {
         constructor(app) {this.app=app; this.contentEl=document.createElement('div');}
-        open() {document.body.appendChild(this.contentEl);this.onOpen();}
+        open() {document.body.appendChild(this.contentEl);this.onOpen();window.lastOpenedModal=this;}
         close() {this.onClose();this.contentEl.remove();}
       }
       const customIcons=new Map();window.liveComponents=0;window.renderedSources=[];
@@ -75,9 +75,52 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       };
     },modules);
     await page.evaluate(()=>require('./lib/i18n').setLanguage('ja'));
-    await page.addScriptTag({content:fs.readFileSync(path.join(root,'main.js'),'utf8')+'\naddIcon(TREE_ICON,TREE_ICON_SVG);window.currentSettings={...DEFAULT_SETTINGS};window.controller=mountKeepView(window.app,document.getElementById("view").createDiv(),{},s=>window.saved=s,currentSettings);'});
-    await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===30 && !document.body.textContent.includes('読み込み中...'));
+    await page.addScriptTag({content:fs.readFileSync(path.join(root,'main.js'),'utf8')+'\naddIcon(TREE_ICON,TREE_ICON_SVG);window.currentSettings={...DEFAULT_SETTINGS,showDateGuidance:false};'});
+    // A new ItemView can open before Obsidian attaches its content to the workspace.
+    await page.evaluate(()=>{
+      window.initialRoot=document.createElement('div');
+      window.controller=mountKeepView(app,initialRoot,{},s=>window.saved=s,currentSettings);
+    });
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(()=>initialRoot.querySelectorAll('.kv-card').length),0);
+    await page.evaluate(()=>document.getElementById('view').appendChild(initialRoot));
+    await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===30 && !document.body.textContent.includes('読み込み中...'),null,{timeout:4000});
     assert.equal(await page.evaluate(()=>window.readCount),30);
+    for(const [width,state,hidden] of [
+      [360,{groupByFolder:true,resultTreeOpen:{'仕事':true}},false],
+      [1200,{sortField:'name',folderFilters:['仕事']},true]
+    ]) {
+      await page.setViewportSize({width,height:850});
+      await page.evaluate(({state,hidden})=>{
+        controller.dispose();
+        const host=document.getElementById('view');host.empty();host.style.display=hidden?'none':'';
+        window.initialRoot=document.createElement('div');
+        window.controller=mountKeepView(app,initialRoot,state,s=>window.saved=s,currentSettings);
+      },{state,hidden});
+      await page.waitForTimeout(200);
+      await page.evaluate(()=>document.getElementById('view').appendChild(initialRoot));
+      if(hidden) {
+        await page.waitForTimeout(200);
+        await page.evaluate(()=>document.getElementById('view').style.display='');
+      }
+      await page.waitForFunction(()=>document.querySelector('.kv-masonry:not(.kv-layout-pending) .kv-card'),null,{timeout:4000});
+      assert.ok(await page.locator('.kv-card').first().isVisible(),'Deferred opening paints without changing any controls');
+      assert.equal(await page.evaluate(()=>saved.sortField),state.sortField||'property');
+      assert.deepEqual(await page.evaluate(()=>saved.folderFilters),state.folderFilters||[]);
+    }
+    await page.evaluate(()=>{
+      controller.dispose();document.getElementById('view').empty();
+      window.initialRoot=document.createElement('div');
+      window.controller=mountKeepView(app,initialRoot,{},()=>{},currentSettings);
+      controller.dispose();document.getElementById('view').appendChild(initialRoot);
+    });
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator('.kv-card,.kv-header').count(),0,'Closing before attachment cancels the deferred paint');
+    await page.evaluate(()=>{
+      document.getElementById('view').empty();
+      window.controller=mountKeepView(app,document.getElementById('view').createDiv(),{},s=>window.saved=s,currentSettings);
+    });
+    await page.waitForFunction(()=>document.querySelector('.kv-card-preview h1'));
     assert.equal(await page.getByRole('button',{name:'作成日時',exact:true}).count(),1);
     assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.kv-header')).position),'static');
     assert.equal(await page.getByRole('combobox',{name:'プレビュー文字数',exact:true}).inputValue(),'150');
@@ -219,6 +262,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     const mousePage=await browser.newPage({hasTouch:false});
     await mousePage.setContent('<style>:root{--text-faint:#888;--background-secondary:#f8f8f8;--text-normal:#222}</style><div class="keep-view-content"><div class="keep-view-root"><div class="kv-card" style="width:200px;height:100px"><div class="kv-scroll-rail" style="height:80px"><div class="kv-scroll-thumb" style="height:40px"></div></div></div></div></div>');
     await mousePage.addStyleTag({content:fs.readFileSync(path.join(root,'styles.css'),'utf8')});
+    await mousePage.addScriptTag({content:"(()=>{const module={exports:{}};const require=()=>({});\n"+fs.readFileSync(path.join(root,'lib/ui.js'),'utf8')+"\nwindow.releaseHover=module.exports.suppressHoverTooltips(document.querySelector('.keep-view-content'));})();"});
     const mouseThumb=mousePage.locator('.kv-scroll-thumb');
     const mouseRest=await mouseThumb.evaluate(el=>getComputedStyle(el).backgroundColor);
     await mousePage.evaluate(()=>{const tip=document.createElement('div');tip.className='tooltip';tip.textContent='説明';tip.style.pointerEvents='none';document.body.appendChild(tip);});
@@ -227,6 +271,9 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     assert.equal(await mousePage.locator('.tooltip').isVisible(),false,'Keep View suppresses visual hover tips');
     await mousePage.mouse.move(500,500);
     assert.equal(await mousePage.locator('.tooltip').isVisible(),true,'Other application hover tips are unaffected');
+    await mousePage.locator('.kv-scroll-rail').hover();
+    await mousePage.evaluate(()=>window.releaseHover());
+    assert.equal(await mousePage.locator('.tooltip').isVisible(),true,'Disposal restores host tooltips even under the pointer');
     await mousePage.close();
 
     const separation=await scrollbar.evaluate(rail=>({rail:rail.getBoundingClientRect().left,body:rail.parentElement.querySelector('.kv-card-preview').getBoundingClientRect().right}));
@@ -1011,6 +1058,70 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     assert.equal(await page.locator('.kv-move-folder[data-destination="Parent/Child"]').isVisible(),true,'Current nested folders are revealed immediately');
     assert.equal(await page.locator('.kv-move-count').evaluate(el=>getComputedStyle(el).fontWeight),'400');
     await page.evaluate(()=>nestedController.dispose());
+    await page.evaluate(samples=>{
+      document.getElementById('view').empty();
+      window.guideSamples=samples;window.guideWrites=0;window.guideSaved=null;window.guideShown=new Set();
+      window.guideFiles=samples.map((sample,i)=>({path:sample.path,basename:sample.path.split('/').at(-1).slice(0,-3),parent:{path:sample.path.includes('/')?sample.path.split('/').slice(0,-1).join('/'):'/'},stat:{mtime:fixtureTime,ctime:fixtureTime,size:sample.content.length},i}));
+      window.guideMetadata=Object.fromEntries(samples.map(sample=>[sample.path,{frontmatter:{...sample.frontmatter},tags:['#date-sample']}]));
+      app.vault.getMarkdownFiles=()=>guideFiles;
+      app.vault.getAbstractFileByPath=path=>guideFiles.find(file=>file.path===path);
+      app.vault.cachedRead=async file=>{readCount++;return guideSamples.find(sample=>sample.path===file.path).content;};
+      app.metadataCache.getFileCache=file=>guideMetadata[file.path];
+      app.fileManager.processFrontMatter=async(file,edit)=>{guideWrites++;edit(guideMetadata[file.path].frontmatter);guideController.refresh(file);};
+      window.guideSettings={...DEFAULT_SETTINGS,language:'ja'};
+      require('./lib/i18n').setLanguage('ja');
+      window.guideRoot=document.createElement('div');
+      window.guideController=mountKeepView(app,guideRoot,{},()=>{},guideSettings,null,{dateGuidanceShown:guideShown,onHideDateGuidance:()=>window.guideSaved={...guideSettings}});
+    },require('./date-guidance-fixture.cjs'));
+    await page.waitForTimeout(200);
+    assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'No popup before the view is attached');
+    assert.equal(await page.evaluate(()=>guideShown.size),0);
+    await page.evaluate(()=>document.getElementById('view').appendChild(guideRoot));
+    await page.waitForFunction(()=>document.querySelector('.kv-date-guidance-modal') && document.querySelectorAll('.kv-card').length===7);
+    assert.match(await page.locator('.kv-date-guidance-modal').textContent(),/6 件/);
+    assert.match(await page.locator('.kv-date-guidance-modal').textContent(),/未設定 3 件・空欄または無効 3 件/);
+    assert.match(await page.locator('.kv-date-guidance-modal').textContent(),/未設定ノートが 1 件/);
+    assert.equal(await page.evaluate(()=>guideWrites),0,'Guidance only reads existing metadata and filenames');
+    await page.locator('.kv-date-guidance-modal').getByRole('button',{name:'閉じる',exact:true}).click();
+    await page.evaluate(()=>guideController.refreshSettings());await page.waitForTimeout(250);
+    assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'A normal dismissal does not repeat during this session');
+    await page.evaluate(()=>{
+      guideController.dispose();document.getElementById('view').empty();
+      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{},()=>{},guideSettings,null,{dateGuidanceShown:guideShown});
+    });
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'Another view shares the already-shown session state');
+    await page.evaluate(()=>{
+      guideController.dispose();document.getElementById('view').empty();guideShown.clear();
+      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{},()=>{},guideSettings,null,{dateGuidanceShown:guideShown,onHideDateGuidance:()=>window.guideSaved={...guideSettings}});
+    });
+    await page.waitForFunction(()=>document.querySelector('.kv-date-guidance-modal'));
+    await page.locator('.kv-date-guidance-modal').getByRole('button',{name:'移行ツールを開く',exact:true}).click();
+    assert.equal(await page.getByRole('button',{name:'確認した対象に適用',exact:true}).isDisabled(),true);
+    await page.getByRole('button',{name:'対象を確認',exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('.kv-migration-modal button').disabled);
+    const migrationPreview=JSON.parse(await page.getByRole('textbox',{name:'日時の変換結果',exact:true}).inputValue());
+    assert.equal(migrationPreview.rows.filter(row=>row.status==='ready').length,1);
+    assert.equal(await page.evaluate(()=>guideWrites),0,'Migration preview still does not write');
+    await page.getByRole('button',{name:'確認した対象に適用',exact:true}).click();
+    await page.waitForFunction(()=>guideWrites===1);
+    assert.equal(await page.evaluate(()=>guideMetadata['Preserved/2026-02-10T08_00_00.000Z.md'].frontmatter.created),null,'Existing empty dates are preserved');
+    await page.evaluate(()=>{lastOpenedModal.close();guideShown.clear();guideController.refreshSettings();});
+    await page.waitForFunction(()=>document.querySelector('.kv-date-guidance-modal')?.textContent.includes('5 件'));
+    await page.getByRole('checkbox',{name:'今後表示しない',exact:true}).check();
+    assert.equal(await page.evaluate(()=>guideSettings.showDateGuidance),true,'The opt-out is saved on closing');
+    await page.locator('.kv-date-guidance-modal').getByRole('button',{name:'閉じる',exact:true}).click();
+    assert.equal(await page.evaluate(()=>guideSaved.showDateGuidance),false);
+    await page.evaluate(()=>{
+      guideController.dispose();document.getElementById('view').empty();
+      window.guideSettings=require('./lib/saved-data').readSettings(guideSaved,DEFAULT_SETTINGS);
+      window.guideController=mountKeepView(app,document.getElementById('view').createDiv(),{},()=>{},guideSettings);
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===7);await page.waitForTimeout(200);
+    assert.equal(await page.locator('.kv-date-guidance-modal').count(),0,'Opt-out persists across a settings round-trip and new session');
+    await page.evaluate(()=>{guideSettings.showDateGuidance=true;guideController.refreshSettings();});
+    await page.waitForFunction(()=>document.querySelector('.kv-date-guidance-modal'));
+    await page.evaluate(()=>guideController.dispose());
     const hoverPage=await browser.newPage({viewport:{width:1200,height:850}});
     await hoverPage.setContent('<style>:root{--background-primary:#fff;--background-secondary:#f7f7f8;--background-modifier-border:#ddd;--text-normal:#222;--text-muted:#666;--interactive-accent:#6958c7}button:hover{box-shadow:0 5px 10px red;transform:translateY(-2px)}</style><div class="keep-view-root"><div class="kv-controls"><button class="kv-segment is-active">Selected</button><button class="kv-segment">Unselected</button></div><button class="kv-btn">Clear</button><button class="kv-btn kv-icon-btn is-active">Tree</button><button class="kv-add-btn kv-btn">Add</button><button class="kv-load-more-btn">More</button><button class="kv-result-folder">Folder</button><select><option>150 chars</option></select><div class="kv-dropdown-item" role="button">Dropdown</div><button class="kv-node-type kv-node-type-and">AND</button><div class="kv-card">Card</div></div><div class="kv-settings"><button>Reset</button></div><div class="kv-text-search-modal"><button>Search</button></div>');
     await hoverPage.addStyleTag({content:fs.readFileSync(path.join(root,'styles.css'),'utf8')});

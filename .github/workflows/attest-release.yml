@@ -1,0 +1,55 @@
+name: Build and attest release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Manifest version to prepare
+        required: true
+        type: string
+      source_commit:
+        description: Full reviewed commit SHA on main
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  attest:
+    if: github.repository == 'kgway/keep-view' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Check reviewed source
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_COMMIT: ${{ inputs.source_commit }}
+        run: node scripts/check-attestation-source.cjs
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.19.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm release:prepare
+      - name: Attest the three install files
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          create-storage-record: false
+          subject-path: |
+            dist/keep-view/main.js
+            dist/keep-view/manifest.json
+            dist/keep-view/styles.css
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: keep-view-attested-candidate
+          path: dist/keep-view/
+          if-no-files-found: error
+          retention-days: 30

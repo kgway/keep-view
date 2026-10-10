@@ -58,6 +58,8 @@ Use the toolbar to combine tags, folders, date ranges and full-text search. For 
 
 Creation dates come from a frontmatter property, `created` by default. Missing or invalid creation dates sort last and are excluded from date ranges. Modification dates use file modification time. Date ranges use the device timezone.
 
+When creation dates are in use, a dialog explains missing or invalid values once per app session for each date property. It shows the counts and, when a supported timestamp filename is available, offers the import preview. The dialog does not change notes. Check Don't show again and close it to save that choice across reloads and skip the extra guidance checks. Turn Creation date guidance back on in settings to restore it. Ordinary card filtering and manual date import remain available.
+
 Click or tap a card to open its note. Long-press to select it; on desktop, Ctrl/Command-click or Space on a focused card also selects it. The selection toolbar lets you draft tag edits and a destination folder, then apply them. Inline body tags are preserved. Folder selection moves the entire folder, including hidden notes, attachments and empty folders. File collisions receive numbered names; folder collisions and moves into their own descendants are rejected.
 
 Trash asks for confirmation by default. Undo/redo covers filters, selection and tag edits; moving and deleting are outside that history. Test file operations on synthetic notes before using them on important data.

@@ -1,10 +1,11 @@
 {
   "name": "obsidian-keep-view",
-  "version": "1.43.1",
+  "version": "1.43.4",
   "private": true,
   "description": "Browse and organize Markdown notes as cards.",
   "scripts": {
     "check": "node --check main.js",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "test": "node --test tests/*.test.cjs",
     "build": "node scripts/package.cjs",
     "test:ui": "node tests/ui.cjs",
@@ -18,10 +19,11 @@
     "check:privacy": "node scripts/privacy-check.cjs",
     "version:set": "node scripts/version-bump.cjs",
     "check:tag": "node scripts/check-tag.cjs",
-    "release:prepare": "pnpm check && pnpm lint && pnpm test && pnpm check:privacy && pnpm build && pnpm verify:release",
+    "release:prepare": "pnpm check && pnpm typecheck && pnpm lint && pnpm test && pnpm check:privacy && pnpm build && pnpm verify:release",
     "package:zip": "node scripts/package-zip.cjs"
   },
   "devDependencies": {
+    "@types/node": "20.12.12",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "eslint-plugin-obsidianmd": "0.4.2",
@@ -29,8 +31,10 @@
     "gifenc": "1.0.3",
     "lucide": "1.8.0",
     "marked": "17.0.5",
+    "obsidian": "1.14.4",
     "playwright": "1.62.1",
-    "pngjs": "7.0.0"
+    "pngjs": "7.0.0",
+    "typescript": "5.4.5"
   },
   "license": "MIT",
   "packageManager": "pnpm@11.19.0",

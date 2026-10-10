@@ -8,7 +8,7 @@ const theme=process.env.KEEP_VIEW_THEME_CSS||path.join(root,'.artifacts/host-css
 const sources=Object.fromEntries(fs.readdirSync(path.join(root,'lib')).filter(name=>/\.(js|json)$/.test(name)).map(name=>[
   './lib/'+(name.endsWith('.json')?name:name.slice(0,-3)),name.endsWith('.json')?'module.exports='+fs.readFileSync(path.join(root,'lib',name),'utf8'):fs.readFileSync(path.join(root,'lib',name),'utf8')
 ]));
-sources.main=fs.readFileSync(path.join(root,'main.js'),'utf8')+'\nmodule.exports={TextSearchModal,PathExportModal,KeepViewSettings,DEFAULT_SETTINGS};';
+sources.main=fs.readFileSync(path.join(root,'main.js'),'utf8')+'\nmodule.exports={TextSearchModal,PathExportModal,KeepViewSettings,CreationDateModal,DEFAULT_SETTINGS};';
 const screenshots=path.join(root,'.artifacts/ui');
 fs.mkdirSync(screenshots,{recursive:true});
 (async()=>{
@@ -93,8 +93,23 @@ fs.mkdirSync(screenshots,{recursive:true});
         const tab=new KeepViewSettings(app,plugin);tab.containerEl=container;tab.display();
       });
       assert.equal(await page.locator('.kv-settings button').count(),2,'Only cache deletion and migration have buttons');
-      assert.equal(await page.locator('.kv-settings .checkbox-container').count(),2);
+      assert.equal(await page.locator('.kv-settings .checkbox-container').count(),3);
       await page.screenshot({path:path.join(screenshots,`host-settings-${mode}-${mobile?'mobile':'desktop'}.png`)});
+      await page.evaluate(()=>document.body.empty());
+      for(const language of ['en','ja']) {
+        await page.evaluate(language=>{
+          require('./lib/i18n').setLanguage(language);window.guideOptOut=0;
+          window.dateModal=new CreationDateModal(app,'created',{missing:3,invalid:3,importable:1},()=>guideOptOut++,()=>{});dateModal.open();
+        },language);
+        const checkbox=page.locator('.kv-date-guidance-modal input[type=checkbox]');
+        await checkbox.check();assert.equal(await checkbox.isChecked(),true);
+        assert.equal(await page.locator('.kv-date-guidance-modal').evaluate(el=>el.scrollWidth>el.clientWidth),false,'Popup content fits the pane');
+        await checkbox.uncheck();
+        await page.screenshot({path:path.join(screenshots,`date-guidance-popup-${language}-${mode}-${mobile?'mobile':'desktop'}.png`)});
+        await checkbox.check();await page.evaluate(()=>dateModal.close());
+        assert.equal(await page.evaluate(()=>guideOptOut),1,'Closing saves the checked preference once');
+        await page.evaluate(()=>dateModal.close());assert.equal(await page.evaluate(()=>guideOptOut),1,'Closing twice cannot duplicate persistence');
+      }
       await page.close();
     }
     console.log('Host modal checks passed: compact search; native export dropdown with shared colors; blank settings defaults and toggles, in light/dark on desktop/mobile.');
