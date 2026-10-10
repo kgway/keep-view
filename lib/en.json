@@ -164,5 +164,16 @@
   "全文検索のキャッシュを削除しますか？": "Delete the full-text search cache?",
   "ノートや設定は削除されません。次に検索するとキャッシュを作り直します。": "Notes and settings will be kept. The cache will be rebuilt the next time you search.",
   "言語": "Language",
-  "ノートを開けませんでした: {0}": "Could not open the note: {0}"
+  "ノートを開けませんでした: {0}": "Could not open the note: {0}",
+  "{0} が未設定・無効のノート: {1} 件": "Notes with missing or invalid {0} dates: {1}",
+  "今後表示しない": "Don't show again",
+  "未設定 {0} 件・空欄または無効 {1} 件（Vault 全体）": "Missing: {0}; empty or invalid: {1} (whole vault).",
+  "作成日時の並び順では末尾に表示し、作成日時の期間指定では除外します。ファイルの作成日時への自動置き換えは行いません。": "These notes sort last by creation date and are excluded from creation-date ranges. File creation time is not substituted automatically.",
+  "別のプロパティに日時を保存している場合は、設定の「日時プロパティ」を変更できます。「更新日時」ではファイルの更新日時を使います。": "If your dates are stored in another property, change Date property in settings. Modified uses the file modification time.",
+  "ファイル名に対応形式の日時がある未設定ノートが {0} 件あります。Google Keep などから移行したノートなら、移行ツールで対象と保存先を確認してから取り込めます。": "Notes without this property with a supported filename timestamp: {0}. For notes migrated from Google Keep or another source, use the import tool to preview the notes and destination property before applying changes.",
+  "既存プロパティは、空欄や無効な値でも移行ツールでは上書きしません。": "The import tool preserves existing properties, including empty or invalid values.",
+  "作成日時の案内": "Creation date guidance",
+  "作成日時について": "About creation dates",
+  "日時プロパティが未設定・無効のとき、起動中に一度だけ案内します。オフにすると、案内用の追加確認も省きます。移行ツールは引き続き手動で開けます。": "Show guidance once per app session when date properties are missing or invalid. Turning this off also skips the extra guidance checks. The import tool remains available manually.",
+  "閉じる": "Close"
 }

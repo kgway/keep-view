@@ -15,6 +15,6 @@ export default [
   {
     files:['main.js','lib/**/*.js'],
     languageOptions:{sourceType:'commonjs',ecmaVersion:2022,parserOptions:{project:'./tsconfig.json',tsconfigRootDir:import.meta.dirname},globals:{window:'readonly',document:'readonly',navigator:'readonly',console:'readonly',setTimeout:'readonly',clearTimeout:'readonly',setInterval:'readonly',clearInterval:'readonly',requestAnimationFrame:'readonly',cancelAnimationFrame:'readonly',IntersectionObserver:'readonly',ResizeObserver:'readonly',AbortController:'readonly',TextEncoder:'readonly',TextDecoder:'readonly',CompressionStream:'readonly',DecompressionStream:'readonly',Blob:'readonly',Response:'readonly',getComputedStyle:'readonly',HTMLElement:'readonly'}},
-    rules:{...advisory,'no-undef':'off','no-implicit-globals':'off','@typescript-eslint/no-require-imports':'off','import/no-unresolved':'off',...Object.fromEntries([...security].map(name=>[name,'error']))},
+    rules:{...advisory,'no-undef':'off','no-implicit-globals':'off','@typescript-eslint/no-require-imports':'warn','import/no-unresolved':'off',...Object.fromEntries(['no-unsafe-assignment','no-unsafe-call','no-unsafe-member-access','no-unsafe-argument','no-unsafe-return'].map(name=>['@typescript-eslint/'+name,'error'])),...Object.fromEntries([...security].map(name=>[name,'error']))},
   },
 ];

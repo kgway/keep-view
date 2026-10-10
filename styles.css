@@ -44,14 +44,14 @@
 }
 
 /* ---------- 汎用ボタン ---------- */
-.kv-btn {
+.keep-view-root .kv-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid var(--kv-card-border);
-  background: var(--background-primary) !important;
+  background: var(--background-primary);
   color: var(--kv-text-primary);
   font-size: 12px;
   cursor: pointer;
@@ -62,7 +62,7 @@
   min-height: 32px;
   min-width: 32px;
 }
-.kv-btn.is-active { background: var(--kv-accent) !important; color: #fff; border-color: var(--kv-accent); }
+.keep-view-root .kv-btn.is-active { background: var(--kv-accent); color: #fff; border-color: var(--kv-accent); }
 .kv-btn.is-danger { color: var(--kv-danger); border-color: var(--kv-danger); }
 .kv-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 
@@ -202,15 +202,14 @@
 .kv-node-type-or  { background: rgba(245,158,11,0.15); color: var(--kv-warning); }
 .kv-node-type-not { background: rgba(239,68,68,0.15);  color: var(--kv-danger); }
 .kv-node-type-tag { background: var(--background-modifier-border); color: var(--kv-text-muted); }
-
-.kv-node-btn {
+.keep-view-root .kv-node-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 3px 8px;
   border-radius: 4px;
   border: 1px solid var(--kv-card-border);
-  background: var(--background-primary) !important;
+  background: var(--background-primary);
   color: var(--kv-text-muted);
   font-size: 11px;
   cursor: pointer;
@@ -406,9 +405,9 @@
    ページネーション
    ============================================================ */
 .kv-load-more-wrap { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 16px 0 8px; }
-.kv-load-more-btn {
+.keep-view-root .kv-load-more-btn {
   padding: 6px 24px; border-radius: 99px;
-  border: 1px solid var(--kv-card-border); background: var(--background-primary) !important; background-image: none !important; box-shadow: none !important;
+  border: 1px solid var(--kv-card-border); background: var(--background-primary); background-image: none; box-shadow: none;
   color: var(--kv-text-muted); font-size: 12px; cursor: pointer;
   transition: background var(--kv-transition), color var(--kv-transition);
 }
@@ -444,25 +443,22 @@ body.theme-dark .kv-card {
 /* ============================================================
    カードのタイトルと本文プレビューの間に区切り線を追加
    ============================================================ */
-
-.kv-card-title {
-  border-bottom: 1px solid var(--background-modifier-border) !important;
-  padding-bottom: 4px !important;                                      /* タイトルと線の間の隙間 */
-  margin-bottom: 4px !important;                                       /* 線と本文プレビューの間の隙間 */
+.keep-view-root .kv-card-title {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 4px;                                      /* タイトルと線の間の隙間 */
+  margin-bottom: 4px;                                       /* 線と本文プレビューの間の隙間 */
 }
 
 /* ============================================================
    カードとボタン：通常時は影なし（またはフラット）、ホバー時に影を出す
    ============================================================ */
-
 /* --- 1. カード（通常時とホバー時） --- */
 .kv-card {
-  box-shadow: none !important;              /* 通常時は影を完全に消す */
-  transition: box-shadow 0.2s ease, transform 0.2s ease !important; /* 動くときのアニメーションを滑らかに */
+  box-shadow: none;              /* 通常時は影を完全に消す */
+  transition: box-shadow 0.2s ease, transform 0.2s ease; /* 動くときのアニメーションを滑らかに */
 }
-
-.kv-card:hover {
-  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.07) !important;
+.keep-view-root .kv-card:hover {
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.07);
 }
 
 
@@ -480,7 +476,7 @@ body.theme-dark .kv-card {
 }
 .kv-migration-modal input { display: block; width: 100%; margin: 6px 0 14px; }
 .kv-modal-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.kv-modal-actions > button:not(.kv-delete-confirm) { box-sizing: border-box; border: 1px solid var(--background-modifier-border) !important; }
+.kv-modal-actions > button:not(.kv-delete-confirm) { box-sizing: border-box; border: 1px solid var(--background-modifier-border); }
 .kv-card-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .keep-view-root .kv-icon-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 36px; height: 36px; min-width: 36px; flex: 0 0 36px; }
 .kv-icon-btn svg { width: 22px; height: 22px; stroke-width: 1.75px; }
@@ -491,10 +487,10 @@ body.theme-dark .kv-card {
   background: var(--kv-card-bg); border: none; box-shadow: none; text-align: left;
   color: var(--text-normal); cursor: pointer; min-height: 36px;
 }
-.keep-view-root button.kv-result-folder { background: var(--kv-bg) !important; background-image: none !important; border: 1px solid var(--kv-card-border) !important; border-radius: 6px; box-shadow: none !important; }
+.keep-view-root button.kv-result-folder { background: var(--kv-bg); background-image: none; border: 1px solid var(--kv-card-border); border-radius: 6px; box-shadow: none; }
 .kv-result-folder-heading { position: relative; }
 .kv-result-folder-heading .kv-result-folder-name { margin-left: 32px; }
-.keep-view-root .kv-folder-create { position: absolute; left: 36px; top: calc(50% - 12px); width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 2px; border: 0; background: transparent !important; background-image: none !important; box-shadow: none !important; color: var(--text-muted); }
+.keep-view-root .kv-folder-create { position: absolute; left: 36px; top: calc(50% - 12px); width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 2px; border: 0; background: transparent; background-image: none; box-shadow: none; color: var(--text-muted); }
 .keep-view-root .kv-folder-create svg { width: 18px; height: 18px; }
 .kv-result-folder svg { width: 18px; height: 18px; display: block; stroke-width: 1.6px; }
 .kv-result-folder > .kv-result-folder-name { overflow-wrap: anywhere; min-width: 0; }
@@ -515,8 +511,7 @@ body.theme-dark .kv-card {
 .kv-toolbar .kv-header-row { flex-wrap: nowrap; gap: 6px; min-width: 0; }
 .kv-toolbar > .kv-view-actions { flex-shrink: 0; margin-left: auto; }
 .kv-text-search-modal input { width: 100%; font-size: 16px; }
-.kv-text-search-dialog > .modal-header:empty,
-.kv-text-search-dialog > .modal-header:has(> .modal-title:empty) { display: none; }
+.kv-text-search-dialog > .modal-header { display: none; }
 .kv-text-search-modal > h2 { margin-top: 0; }
 .kv-export-modal {
   --kv-text-primary: color-mix(in srgb, var(--text-normal) 94%, var(--background-primary));
@@ -536,8 +531,8 @@ body.theme-dark .kv-card {
 .kv-output-actions { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: calc(100% - 52px); }
 .kv-output-actions .kv-counter { margin: 0; font-variant-numeric: tabular-nums; white-space: normal; text-align: right; overflow-wrap: anywhere; }
 .kv-segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 9px; }
-.kv-controls .kv-segment { box-sizing: border-box; width: 74px; border: 0; box-shadow: none !important; background: transparent !important; background-image: none !important; border-radius: 6px; padding: 5px 8px; font-size: 12px; font-weight: 400; color: var(--text-muted); min-height: 28px; cursor: pointer; }
-.kv-controls .kv-segment.is-active { background: var(--background-primary) !important; color: var(--text-normal); font-weight: 400; outline: 1px solid var(--background-modifier-border); outline-offset: -1px; }
+.keep-view-root .kv-controls .kv-segment { box-sizing: border-box; width: 74px; border: 0; box-shadow: none; background: transparent; background-image: none; border-radius: 6px; padding: 5px 8px; font-size: 12px; font-weight: 400; color: var(--text-muted); min-height: 28px; cursor: pointer; }
+.keep-view-root .kv-controls .kv-segment.is-active { background: var(--background-primary); color: var(--text-normal); font-weight: 400; outline: 1px solid var(--background-modifier-border); outline-offset: -1px; }
 .kv-segment:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .kv-toolbar .kv-date-range { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr) 36px; align-items: center; width: 310px; flex-shrink: 0; }
 .kv-controls .kv-date-range input[type=date] { display: block; box-sizing: border-box; min-width: 0; max-width: 100%; width: 100%; padding: 5px 3px; font-size: 12px; }
@@ -558,8 +553,8 @@ body.theme-dark .kv-card {
 .kv-card-preview.markdown-rendered ul > li:not(.task-list-item)::before { content: ''; position: absolute; width: .28em; height: .28em; border-radius: 50%; background: currentColor; inset-inline-start: -.64em; top: .66em; }
 .kv-card-preview.markdown-rendered li { margin-inline: 0; }
 .kv-card-preview.markdown-rendered li > p:first-child { display: inline; }
-.kv-card-preview.markdown-rendered li:is(.task-list-item,:has(> input[type=checkbox], > p > input[type=checkbox])) { list-style: none; margin-inline-start: -1em; }
-.kv-card-preview.markdown-rendered li:is(.task-list-item,:has(> input[type=checkbox], > p > input[type=checkbox]))::before { content: none; }
+.kv-card-preview.markdown-rendered li:is(.task-list-item,.kv-task-item) { list-style: none; margin-inline-start: -1em; }
+.kv-card-preview.markdown-rendered li:is(.task-list-item,.kv-task-item)::before { content: none; }
 .kv-card-preview.markdown-rendered input[type=checkbox] { position: relative; margin: 0 .35em 0 0; vertical-align: middle; }
 .kv-card-preview.markdown-rendered blockquote { margin-inline: 0; padding-inline-start: .5em; }
 .kv-card-preview.is-source { white-space: pre-wrap; font-family: var(--font-monospace); font-size: 12px; }
@@ -587,9 +582,9 @@ body.theme-dark .kv-card {
 .kv-selection-bar[hidden] { display: none; }
 .keep-view-root .kv-card.is-selected { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
 .kv-card { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
-.modal.kv-export-dialog { animation: none !important; transition: none !important; transform: none !important; }
+.modal.kv-export-dialog { animation: none; transition: none; transform: none; }
 @media (pointer: coarse) {
-  .modal-container:has(> .kv-export-dialog) { align-items: center; animation: none !important; transition: none !important; }
+.modal-container.kv-export-container { align-items: center; animation: none; transition: none; }
   .kv-card-preview { padding-right: 16px; }
 }
 /* Compress the desktop row before moving the date range below it. */
@@ -650,6 +645,8 @@ body.theme-dark .kv-card {
 }
 
 .kv-tag-apply { display: block; margin: 8px 0 0 auto; }
+.keep-view-root .kv-node-add-menu { display: inline-flex; gap: 4px; margin-left: 4px; flex-wrap: wrap; }
+.keep-view-root .kv-root-node-row { padding-left: 0; margin-bottom: 4px; }
 
 /* Equal space on both sides of the creation row, on desktop and mobile. */
 .keep-view-root .kv-tree-area { padding-bottom: 0; }
@@ -658,7 +655,7 @@ body.theme-dark .kv-card {
 .kv-dropdown-item.is-partial > :is(span,input) { opacity: .5; }
 .kv-dropdown-item.is-partial input { cursor: default; }
 .kv-card-preview.markdown-rendered .mermaid svg { max-width: none; max-height: none; }
-.kv-card-preview.markdown-rendered :is(svg text,.mermaid .nodeLabel,.mermaid .edgeLabel,.mermaid .label,.mermaid foreignObject p) { font-size: 14px !important; }
+.keep-view-root .kv-card-preview.markdown-rendered :is(svg text,.mermaid .nodeLabel,.mermaid .edgeLabel,.mermaid .label,.mermaid foreignObject p) { font-size: 14px; }
 
 /* The original Dataview snippet may still be enabled. Keep native view spacing
    and preview typography independent of those broad Markdown rules. */
@@ -678,10 +675,10 @@ body.theme-dark .kv-card {
 }
 .kv-selection-bar .kv-selection-confirm { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
 .kv-result-actions > .kv-collapse-all { margin-left: 10px; margin-right: auto; }
-.kv-result-actions:has(> .kv-search-status-slot) { flex-wrap: nowrap; }
-.kv-result-actions:has(> .kv-search-status-slot) > .kv-collapse-all { margin-right: 0; }
+.kv-result-actions.has-search { flex-wrap: nowrap; }
+.kv-result-actions.has-search > .kv-collapse-all { margin-right: 0; }
 .kv-folder-more { display: flex; justify-content: center; padding-top: 24px; }
-.kv-folder-more:has(> :only-child[hidden]), .kv-folder-more:empty { display: none; }
+.kv-folder-more:empty { display: none; }
 /* Third responsive step: leave tagless on row one until that row gets tight. */
 @container (min-width: 421px) and (max-width: 740px) {
   .kv-toolbar { grid-template-columns: 36px 36px minmax(56px,58px) minmax(62px,66px) 36px minmax(0,1fr) 36px 36px auto; }
@@ -694,10 +691,10 @@ body.theme-dark .kv-card {
 .kv-result-folder > span:first-child { padding: 4px; margin: -4px; }
 .kv-move-current { font-size: 11px; color: var(--text-muted); padding: 6px 8px; overflow-wrap: anywhere; }
 .keep-view-root .kv-dropdown-item input.kv-dropdown-checkbox {
-  appearance: none !important; -webkit-appearance: none !important; position: relative !important;
-  box-sizing: border-box !important; flex: 0 0 16px !important; width: 16px !important; height: 16px !important; min-width: 16px !important; min-height: 16px !important; max-width: 16px !important; max-height: 16px !important; align-self: center;
-  margin: 0 2px 0 0 !important; padding: 0 !important; border: 1px solid var(--kv-card-border) !important; border-radius: 3px !important; transform: none !important;
-  background: var(--kv-bg) !important; box-shadow: none !important; cursor: pointer;
+  appearance: none; -webkit-appearance: none; position: relative;
+  box-sizing: border-box; flex: 0 0 16px; width: 16px; height: 16px; min-width: 16px; min-height: 16px; max-width: 16px; max-height: 16px; align-self: center;
+  margin: 0 2px 0 0; padding: 0; border: 1px solid var(--kv-card-border); border-radius: 3px; transform: none;
+  background: var(--kv-bg); box-shadow: none; cursor: pointer;
 }
 .keep-view-root .kv-checkbox-control {
   position: relative;
@@ -709,31 +706,31 @@ body.theme-dark .kv-card {
   margin-inline-end: 2px;
 }
 .keep-view-root .kv-checkbox-control input.kv-dropdown-checkbox {
-  position: absolute !important;
-  inset: 0 !important;
-  margin: 0 !important;
+  position: absolute;
+  inset: 0;
+  margin: 0;
 }
 .keep-view-root .kv-checkbox-control input.kv-dropdown-checkbox::before,
-.keep-view-root .kv-checkbox-control input.kv-dropdown-checkbox::after { content: none !important; display: none !important; }
+.keep-view-root .kv-checkbox-control input.kv-dropdown-checkbox::after { content: none; display: none; }
 .keep-view-root .kv-checkbox-mark {
-  display: none !important;
-  position: absolute !important;
-  box-sizing: border-box !important;
-  top: 4px !important;
-  left: 4px !important;
-  width: 8px !important;
-  height: 5px !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: solid var(--checkbox-marker-color, var(--text-on-accent, #fff)) !important;
-  border-width: 0 0 2px 2px !important;
-  border-radius: 0 !important;
-  transform: rotate(-45deg) !important;
-  transform-origin: center !important;
+  display: none;
+  position: absolute;
+  box-sizing: border-box;
+  top: 4px;
+  left: 4px;
+  width: 8px;
+  height: 5px;
+  margin: 0;
+  padding: 0;
+  border: solid var(--checkbox-marker-color, var(--text-on-accent, #fff));
+  border-width: 0 0 2px 2px;
+  border-radius: 0;
+  transform: rotate(-45deg);
+  transform-origin: center;
   pointer-events: none;
 }
-.keep-view-root .kv-checkbox-control:has(input:checked) > .kv-checkbox-mark { display: block !important; }
-.keep-view-root .kv-dropdown-item input.kv-dropdown-checkbox:checked { background: var(--checkbox-color, var(--kv-accent)) !important; border-color: var(--checkbox-color, var(--kv-accent)) !important; }
+.keep-view-root .kv-checkbox-control > input:checked + .kv-checkbox-mark { display: block; }
+.keep-view-root .kv-dropdown-item input.kv-dropdown-checkbox:checked { background: var(--checkbox-color, var(--kv-accent)); border-color: var(--checkbox-color, var(--kv-accent)); }
 .keep-view-root .kv-dropdown-item input.kv-dropdown-checkbox:focus-visible { outline: 2px solid var(--kv-accent); outline-offset: 2px; }
 .kv-move-count { margin-left: auto; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
 .kv-move-apply { display: block; margin: 6px 0 0 auto; }
@@ -745,12 +742,10 @@ body.theme-dark .kv-card {
 .kv-tag-count { order: 2; margin-left: auto; padding-left: 8px; font-size: 10px; color: var(--text-muted); white-space: nowrap; }
 /* Keep accessible names for assistive technology without visual hover popups.
    Restrict suppression to Keep View surfaces so other plugins are unaffected. */
-body:has(:is(.keep-view-content,.kv-dropdown,.kv-text-search-modal,.kv-export-modal,.kv-migration-modal):hover) .tooltip,
-body:has(.modal:hover :is(.kv-text-search-modal,.kv-export-modal,.kv-migration-modal)) .tooltip { display: none !important; }
+body.kv-hide-tooltips .tooltip { display: none; }
 
 .keep-view-content .keep-view-root > .kv-load-more-wrap { padding-top: 24px !important; }
-
-.kv-selection-confirm[hidden] { display: none !important; }
+.keep-view-root .kv-selection-confirm[hidden] { display: none; }
 .keep-view-root .kv-card :is(.kv-card-title,.kv-card-preview,.kv-card-preview *) { user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; }
 .kv-selection-bar { flex-wrap: wrap; }
 
@@ -762,7 +757,7 @@ body:has(.modal:hover :is(.kv-text-search-modal,.kv-export-modal,.kv-migration-m
 
 .keep-view-root .kv-selection-delete { margin-left: auto; color: var(--text-error, #b95656); background: transparent; }
 .kv-delete-dialog { width: min(800px,94vw); }
-.kv-delete-modal [hidden] { display: none !important; }
+.kv-delete-modal [hidden] { display: none; }
 .kv-delete-preview { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(230px,100%),1fr)); gap: 12px; max-height: 55vh; overflow: auto; padding: 4px; margin-bottom: 12px; }
 .kv-delete-preview .kv-card { position: static; cursor: default; }
 .kv-delete-preview .kv-card:hover { transform: none; }
@@ -770,7 +765,6 @@ body:has(.modal:hover :is(.kv-text-search-modal,.kv-export-modal,.kv-migration-m
 .kv-delete-preview .kv-card-preview::-webkit-scrollbar { display: block; width: 4px; }
 .kv-delete-path { font-size: 11px; color: var(--text-muted); overflow-wrap: anywhere; margin-bottom: 8px; }
 .kv-delete-confirm { color: var(--text-error, #b95656); border: 1px solid var(--text-error, #b95656); }
-body:has(.kv-delete-modal:hover) .tooltip,body:has(.modal:hover .kv-delete-modal) .tooltip { display: none !important; }
 
 /* Shared controls keep the same corners and disclosure motion on all devices. */
 .keep-view-root :is(.kv-btn,.kv-node-btn,.kv-node-type,.kv-dropdown-toggle,.kv-segment,.kv-result-folder,.kv-load-more-btn,.kv-top-btn),
@@ -780,7 +774,7 @@ body:has(.kv-delete-modal:hover) .tooltip,body:has(.modal:hover .kv-delete-modal
 .keep-view-root :is(.kv-icon-btn:not(.is-active):not(.kv-selection-delete),.kv-result-folder) { color: var(--kv-text-primary); }
 .keep-view-root .kv-dropdown-toggle svg { width: 14px; height: 14px; stroke-width: 1.75px; color: var(--kv-text-muted); }
 .keep-view-root .kv-dropdown-toggle.is-open svg { transform: rotate(90deg); }
-.keep-view-root .kv-result-folder > .kv-dropdown-toggle { width: 24px; height: 24px; background: transparent !important; }
+.keep-view-root .kv-result-folder > .kv-dropdown-toggle { width: 24px; height: 24px; background: transparent; }
 .keep-view-root .kv-result-folder > .kv-dropdown-toggle svg { width: 28px; height: 28px; }
 .kv-dropdown-spacer { width: 24px; height: 24px; flex-shrink: 0; pointer-events: none; }
 .kv-add-btn svg { display: block; width: 12px; height: 12px; stroke-width: 2px; }
@@ -840,46 +834,46 @@ body:has(.kv-delete-modal:hover) .tooltip,body:has(.modal:hover .kv-delete-modal
 /* Hover is limited to pointing devices so touch taps cannot leave it latched. */
 :is(.keep-view-root,.kv-text-search-modal,.kv-export-modal,.kv-migration-modal,.kv-delete-modal,.kv-cache-delete-modal)
 :is(button,select,[role="button"],.kv-node-type,.kv-node-btn,.kv-tag-selected,.kv-dropdown-item):not(.kv-card *):not(.kv-export-format) {
-  transition: none !important;
-  animation: none !important;
-  transform: none !important;
-  box-shadow: none !important;
+  transition: none;
+  animation: none;
+  transform: none;
+  box-shadow: none;
 }
 :is(.keep-view-root,.kv-text-search-modal,.kv-export-modal,.kv-migration-modal,.kv-delete-modal,.kv-cache-delete-modal)
 :is(button,select,[role="button"],.kv-node-type,.kv-node-btn,.kv-tag-selected,.kv-dropdown-item):not(.kv-card *):not(.kv-export-format):not(.kv-add-btn):is(:hover,:active) {
-  box-shadow: none !important;
+  box-shadow: none;
 }
 @media (hover: hover) and (pointer: fine) {
-  :is(.keep-view-root,.kv-text-search-modal,.kv-export-modal,.kv-migration-modal,.kv-delete-modal,.kv-cache-delete-modal)
+:is(.keep-view-root,.kv-text-search-modal,.kv-export-modal,.kv-migration-modal,.kv-delete-modal,.kv-cache-delete-modal)
   :is(button,select,[role="button"],.kv-node-type,.kv-node-btn,.kv-tag-selected,.kv-dropdown-item):not(.kv-card *):not(.kv-export-format):not(.kv-add-btn):not(.kv-segment):not(:disabled):not(.is-disabled):not(.kv-hover-released):hover {
-    background: var(--kv-button-feedback, var(--background-secondary)) !important;
-    background-image: none !important;
-    box-shadow: none !important;
-    transform: none !important;
+    background: var(--kv-button-feedback, var(--background-secondary));
+    background-image: none;
+    box-shadow: none;
+    transform: none;
     opacity: 1;
   }
-  .keep-view-root .kv-controls .kv-segment:not(.is-active):hover {
-    background: color-mix(in srgb, var(--text-normal) 3%, var(--background-secondary)) !important;
+.keep-view-root .kv-controls .kv-segment:not(.is-active):hover {
+    background: color-mix(in srgb, var(--text-normal) 3%, var(--background-secondary));
   }
 }
 :is(.keep-view-root,.kv-text-search-modal,.kv-export-modal,.kv-migration-modal,.kv-delete-modal,.kv-cache-delete-modal)
 :is(button,select,[role="button"],.kv-node-type,.kv-node-btn,.kv-tag-selected,.kv-dropdown-item):not(.kv-card *):not(.kv-export-format):not(.kv-add-btn):not(.kv-segment):not(:disabled):not(.is-disabled):not(.kv-hover-released):active {
-  background: var(--kv-button-feedback, var(--background-secondary)) !important;
-  background-image: none !important;
-  box-shadow: none !important;
-  transform: none !important;
+  background: var(--kv-button-feedback, var(--background-secondary));
+  background-image: none;
+  box-shadow: none;
+  transform: none;
   opacity: 1;
 }
 .keep-view-root .kv-controls .kv-segment:not(.is-active):active {
-  background: color-mix(in srgb, var(--text-normal) 3%, var(--background-secondary)) !important;
+  background: color-mix(in srgb, var(--text-normal) 3%, var(--background-secondary));
 }
 
 :is(.kv-text-search-modal,.kv-export-modal,.kv-migration-modal,.kv-delete-modal,.kv-cache-delete-modal) {
   --kv-button-feedback: color-mix(in srgb, var(--text-normal) 3%, var(--background-secondary));
 }
 :is(.kv-text-search-modal,.kv-export-modal,.kv-migration-modal,.kv-delete-modal,.kv-cache-delete-modal) button {
-  background: var(--background-secondary) !important;
-  background-image: none !important;
+  background: var(--background-secondary);
+  background-image: none;
 }
 .kv-btn.is-active,.kv-node-type,.mod-cta {
   --kv-button-feedback: color-mix(in srgb, var(--kv-button-color) 93%, var(--background-primary));
@@ -891,37 +885,36 @@ body:has(.kv-delete-modal:hover) .tooltip,body:has(.modal:hover .kv-delete-modal
 .kv-node-type-not { --kv-button-color: rgba(239,68,68,0.15); }
 .kv-node-type-tag { --kv-button-color: var(--background-modifier-border); }
 :is(.kv-text-search-modal,.kv-export-modal,.kv-migration-modal,.kv-delete-modal,.kv-cache-delete-modal) button.mod-cta {
-  background: var(--interactive-accent) !important;
+  background: var(--interactive-accent);
 }
-
 .keep-view-root .kv-add-btn {
-  appearance: none !important;
-  display: inline-flex !important;
+  appearance: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  box-sizing: border-box !important;
-  width: 56px !important;
-  min-width: 56px !important;
-  max-width: 56px !important;
-  height: 44px !important;
-  min-height: 44px !important;
-  max-height: 44px !important;
-  padding: 1px 4px !important;
-  border: 1px solid var(--kv-card-border) !important;
-  border-radius: 6px !important;
-  background: var(--background-primary) !important;
-  background-image: none !important;
-  color: var(--kv-text-primary) !important;
+  box-sizing: border-box;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  padding: 1px 4px;
+  border: 1px solid var(--kv-card-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  background-image: none;
+  color: var(--kv-text-primary);
   font-family: var(--font-interface);
-  font-size: 11px !important;
-  font-weight: 450 !important;
-  line-height: normal !important;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: normal;
 }
 @media (hover: hover) and (pointer: fine) {
-  .keep-view-root button.kv-add-btn:not(:disabled):hover { box-shadow: 0 2px 7px rgba(0,0,0,0.07) !important; }
+.keep-view-root button.kv-add-btn:not(:disabled):hover { box-shadow: 0 2px 7px rgba(0,0,0,0.07); }
 }
-.keep-view-root button.kv-add-btn:not(:disabled):active { box-shadow: 0 2px 7px rgba(0,0,0,0.07) !important; }
+.keep-view-root button.kv-add-btn:not(:disabled):active { box-shadow: 0 2px 7px rgba(0,0,0,0.07); }
 
 /* Runtime state classes keep constant presentation in CSS. Geometry stays measured. */
 .keep-view-root .kv-empty-tag { color:var(--text-faint); pointer-events:none; }
@@ -929,3 +922,7 @@ body:has(.kv-delete-modal:hover) .tooltip,body:has(.modal:hover .kv-delete-modal
 .kv-drag-ghost { position:fixed; pointer-events:none; z-index:99999; background:var(--background-primary); border:2px solid var(--interactive-accent); border-radius:6px; padding:3px 10px; font-size:12px; opacity:0.92; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,0.22); }
 .keep-view-root .kv-masonry.kv-layout-pending { visibility:hidden; }
 .keep-view-root .kv-card-preview svg.kv-measured-svg { max-width:none; }
+
+.keep-view-root.kv-date-guidance-modal p { line-height:1.5; overflow-wrap:anywhere; }
+.keep-view-root .kv-date-guidance-opt-out { display:flex; align-items:center; gap:8px; margin:14px 0; cursor:pointer; }
+.kv-date-guidance-dialog .modal-header { display:none; }

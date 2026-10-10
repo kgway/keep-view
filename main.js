@@ -1,12 +1,25 @@
 'use strict';
 const {t:msg,setLanguage,getLocale} = require('./lib/i18n');
-const {Plugin, ItemView, Modal, Notice, PluginSettingTab, Setting, getAllTags, getLanguage, setIcon, addIcon, MarkdownRenderer, Component} = require('obsidian');
+const {Plugin, ItemView, Modal, Notice, PluginSettingTab, Setting, getAllTags, getLanguage, setIcon, addIcon, MarkdownRenderer, Component, requireApiVersion} = require('obsidian');
 const {CardSearch,normalizeSearch} = require('./lib/card-search');
 const {formatPathExport} = require('./lib/path-export');
 const {SearchIndex} = require('./lib/search-index');
 const {noteTags,restoreTagChanges,editNoteTags,moveSelection,trashSelectedNotes,validTimeZone,localIsoTimestamp,createNote} = require('./lib/note-operations');
 const {openNoteInForeground} = require('./lib/note-opening');
-const {iconButton,folderDropdownRow,dropdownCheckbox,disclosureIcon,animateDisclosure} = require('./lib/ui');
+const {iconButton,folderDropdownRow,dropdownCheckbox,disclosureIcon,animateDisclosure,suppressHoverTooltips} = require('./lib/ui');
+const {record,isFile,isFolder,clone,errorMessage,dictionary} = require('./lib/value-guards');
+const {readState,readSettings} = require('./lib/saved-data');
+const {DateGuidance} = require('./lib/date-guidance');
+/** @typedef {import('./lib/types').TagNode} TagNode */
+/** @typedef {import('./lib/types').Page} Page */
+/** @typedef {import('./lib/types').SavedState} SavedState */
+/** @typedef {import('./lib/types').Snapshot} Snapshot */
+/** @typedef {{type:string,value?:string}} Token */
+/** @typedef {{node:TagNode,pos:number}} ParsedNode */
+/** @typedef {HTMLDivElement & {_anchor?:HTMLElement,_reposition?:()=>void,_cleanup?:()=>void,_isFolderDropdown?:boolean}} Popup */
+/** @typedef {{key:string|null,ready:boolean,matches:Set<string>,errors:string[],waiting?:boolean,files?:Set<string>,completed?:number,total?:number,slow?:boolean,repaint?:()=>void}} SearchState */
+/** @typedef {HTMLElement & {_treeGroups?:Set<string>,_appendCards?:(pages:Page[])=>void}} CardBody */
+/** @typedef {{name:string,desc?:string,render:(setting:import('obsidian').Setting,group:import('obsidian').SettingGroup|null)=>void}} SettingRow */
 const VIEW_TYPE = 'keep-view';
 const KEEP_VIEW_ICON = 'keep-view-note-bulb';
 const KEEP_VIEW_ICON_SVG = `<g fill="none" stroke="currentColor" stroke-width="6.25" stroke-linecap="round" stroke-linejoin="round">
@@ -18,20 +31,24 @@ const KEEP_VIEW_ICON_SVG = `<g fill="none" stroke="currentColor" stroke-width="6
 const TREE_ICON='keep-view-tree';
 const EXPORT_ICON='log-out';
 const TREE_ICON_SVG='<g fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 14v58q0 6 6 6h20M22 34h26"/><rect x="48" y="22" width="38" height="24" rx="5"/><rect x="48" y="66" width="38" height="24" rx="5"/></g>';
-const DEFAULT_SETTINGS = {dateProperty:'created',creationTimeZone:'',previewLengths:[50,100,150,200,400],previewMode:'markdown',confirmDelete:true,fastSearch:true,language:'auto'};
+/** @type {import('./lib/types').Settings} */
+const DEFAULT_SETTINGS = {dateProperty:'created',creationTimeZone:'',previewLengths:[50,100,150,200,400],previewMode:'markdown',confirmDelete:true,fastSearch:true,showDateGuidance:true,language:'auto'};
 
+/** @param {string} raw */
 function markdownBody(raw) {
   const leadingBlankLines=/^(?:[ \t]*\r?\n)+/;
   return raw.replace(/^\uFEFF/,'').replace(leadingBlankLines,'')
     .replace(/^---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)(?:\r?\n|$)/,'').replace(leadingBlankLines,'');
 }
+/** @param {unknown} value @returns {number[]|null} */
 function previewLengths(value) {
-  const values=Array.isArray(value)?value:String(value).split(/[,、，\s]+/).filter(Boolean).map(Number);
-  if(!values.length || values.length>20 || values.some(n=>!Number.isInteger(n)||n<1||n>10000)) return null;
-  return [...new Set(values)].sort((a,b)=>a-b);
+  const values=Array.isArray(value)?/** @type {unknown[]} */ (value):String(value).split(/[,、，\s]+/).filter(Boolean).map(Number);
+  if(!values.length || values.length>20 || values.some(n=>typeof n!=='number'||!Number.isInteger(n)||n<1||n>10000)) return null;
+  return [...new Set(values.filter(/** @param {unknown} n @returns {n is number} */ n=>typeof n==='number'))].sort((a,b)=>a-b);
 }
 
 // BEGIN MIGRATION HELPERS — also packaged as a standalone Obsidian user script.
+/** @param {unknown} value */
 function parseIsoTimestamp(value) {
   if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.getTime() : null;
   if (typeof value !== 'string') return null;
@@ -49,6 +66,7 @@ function parseIsoTimestamp(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 
+/** @param {string} basename */
 function timestampFromFilename(basename) {
   const match = basename.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})[_:](\d{2})[_:](\d{2})(\.\d{1,9})?(Z|[+-]\d{2}[_:]\d{2})$/);
   if (!match) return null;
@@ -57,27 +75,34 @@ function timestampFromFilename(basename) {
   return parseIsoTimestamp(iso) === null ? null : iso;
 }
 
+/** @param {unknown} property @returns {property is string} */
 function validatePropertyName(property) {
   return typeof property==='string' && property.trim().length>0 && !/[\r\n\0]/.test(property) && !['__proto__','constructor','prototype'].includes(property.trim());
 }
 
+/** @param {unknown} folder */
 function normalizeFolderScope(folder) {
   const clean = String(folder || '').replace(/\\/g,'/').replace(/^\/+|\/+$/g,'');
   if (clean.split('/').some(part => part==='.' || part==='..')) throw new Error(msg("フォルダには Vault 内の相対パスを指定してください"));
   return clean;
 }
 
-/** Default is a read-only preview. Runs inside Obsidian with its public APIs. */
+/** Default is a read-only preview. Runs inside Obsidian with its public APIs.
+ * @param {import('obsidian').App} app
+ * @param {{property?:string,folder?:string,apply?:boolean,paths?:string[]|null,cancelled?:()=>boolean}} options
+ */
 async function migrateCreated(app, {property='created', folder='', apply=false, paths=null, cancelled=()=>false}={}) {
   if (!validatePropertyName(property)) throw new Error(msg("有効なプロパティ名を指定してください"));
   property = property.trim();
   folder = normalizeFolderScope(folder);
   const allowed = paths ? new Set(paths) : null;
+  /** @type {{property:string,folder:string,applied:boolean,rows:{path:string,value:string|null,status:string,error?:string}[],cancelled?:boolean}} */
   const report = {property, folder, applied:apply, rows:[]};
   const files = app.vault.getMarkdownFiles().filter(file => (!folder || file.path.startsWith(folder+'/')) && (!allowed || allowed.has(file.path))).sort((a,b)=>a.path.localeCompare(b.path));
   for (const file of files) {
     if (cancelled()) { report.cancelled=true; break; }
     const iso = timestampFromFilename(file.basename);
+    /** @type {{path:string,value:string|null,status:string,error?:string}} */
     const row = {path:file.path, value:iso, status:'unrecognized'};
     report.rows.push(row);
     if (!iso) continue;
@@ -91,14 +116,15 @@ async function migrateCreated(app, {property='created', folder='', apply=false, 
         if (Object.prototype.hasOwnProperty.call(current,property)) row.status='existing';
         else { Object.defineProperty(current, property, {value:iso,writable:true,enumerable:true,configurable:true}); row.status='written'; }
       });
-    } catch (error) { row.status='error'; row.error=String(error.message || error); }
+    } catch (error) { row.status='error'; row.error=error instanceof Error?error.message:String(error); }
   }
   return report;
 }
 // END MIGRATION HELPERS
 
+/** @param {number[]} heights @param {number} columns @param {number} gap */
 function masonryPositions(heights, columns, gap) {
-  const bottoms = Array(columns).fill(0);
+  const bottoms = Array.from({length:columns},()=>0);
   const positions = heights.map(height => {
     const top = Math.min(...bottoms);
     const column = bottoms.indexOf(top);
@@ -108,6 +134,7 @@ function masonryPositions(heights, columns, gap) {
   return {positions, height:Math.max(0,...bottoms)- (heights.length ? gap : 0)};
 }
 
+/** @param {import('obsidian').App} app @param {Page[]} pages @param {Record<string,unknown>} filters @param {string} property @returns {import('./lib/types').PathExport} */
 function makePathExport(app, pages, filters, property) {
   return {schema:'keep-view-paths/v1', exportedAt:new Date().toISOString(), vault:app.vault.getName(),
     pathBase:'vault-relative', count:pages.length,
@@ -115,7 +142,9 @@ function makePathExport(app, pages, filters, property) {
     paths:pages.map(page=>page.file.path)};
 }
 
+/** @param {Page[]} pages */
 function resultFolderTree(pages) {
+  /** @type {import('./lib/types').ResultFolder} */
   const root={path:'',name:msg("(ルート)"),pages:[],children:new Map(),count:0};
   for (const page of pages) {
     let node=root; node.count++;
@@ -128,16 +157,29 @@ function resultFolderTree(pages) {
   return root;
 }
 
-function mountKeepView(app, container, saved, persist, settings = DEFAULT_SETTINGS, searchIndex = null) {
-const document = container.ownerDocument;
-const window = document.defaultView;
+/** @param {import('obsidian').App} app @param {HTMLElement} container @param {Partial<SavedState>} saved @param {(state:SavedState)=>void} persist @param {import('./lib/types').Settings} settings @param {SearchIndex|null} searchIndex @param {{onHideDateGuidance?:()=>void,dateGuidanceShown?:Set<string>}} callbacks */
+function mountKeepView(app, container, saved, persist, settings = DEFAULT_SETTINGS, searchIndex = null, callbacks = {}) {
+const document = /** @type {Document & {caretPositionFromPoint?:(x:number,y:number)=>{offsetNode:Node,offset:number}|null}} */ (container.ownerDocument);
+const window = /** @type {Window & typeof globalThis} */ (document.defaultView);
 const AbortController = window.AbortController;
 const lifetime = new AbortController();
-let disposed = false, revision = 0, dragCleanup = null, exportModal = null, searchModal = null, deleteModal = null;
+const releaseTooltips=suppressHoverTooltips(container);
+let disposed = false, revision = 0;
+/** @type {(()=>void)|null} */ let dragCleanup=null;
+/** @type {PathExportModal|null} */ let exportModal=null;
+/** @type {TextSearchModal|null} */ let searchModal=null;
+/** @type {DeleteNotesModal|null} */ let deleteModal=null;
+/** @type {MigrationModal|null} */ let dateMigrationModal=null;
+const dateGuidance=new DateGuidance();
+const dateGuidanceShown=callbacks.dateGuidanceShown || new Set(/** @type {string[]} */ ([]));
+/** @type {CreationDateModal|null} */ let dateGuidanceModal=null;
 const cardSearch=new CardSearch(app,{index:searchIndex,yieldTask:()=>new Promise(resolve=>window.setTimeout(resolve,0))});
-let searchActivated=false,searchState={key:null,ready:true,matches:new Set(),errors:[]};
+/** @type {SearchState} */
+let searchState={key:null,ready:true,matches:new Set(),errors:[]};
+let searchActivated=false;
 let deferTreeCards=false,treeCardTimer=null;
-const treeCardQueue=[];
+const treeCardQueue=/** @type {(()=>boolean)[]} */ ([]);
+/** @param {()=>boolean} task */
 const scheduleTreeCards=task=>{
   treeCardQueue.push(task);
   if(treeCardTimer!==null) return;
@@ -149,6 +191,7 @@ const scheduleTreeCards=task=>{
   treeCardTimer=setTimeout(next,0);
 };
 // Clear only this view's text selection; leave dragging and copy gestures intact.
+/** @type {{id:number,x:number,y:number,at:number,anchor:Node,focus:Node,start:number,end:number}|null} */
 let selectionTap=null;
 document.addEventListener?.('pointerdown',event=>{
   selectionTap=null;if(event.button!==0) return;
@@ -165,37 +208,41 @@ document.addEventListener?.('pointerup',event=>{
   const selected=window.getSelection();
   if(selected.anchorNode===tap.anchor && selected.focusNode===tap.focus && selected.anchorOffset===tap.start && selected.focusOffset===tap.end) selected.removeAllRanges();
 },{capture:true,signal:lifetime.signal});
-const selectedPaths=new Set();
-const selectedFolders=new Set();
-let selectionBar=null, selectionMode=false, tagDraft=null, moveDraft=null, selectionBusy=false;
+const selectedPaths=new Set(/** @type {string[]} */ ([]));
+const selectedFolders=new Set(/** @type {string[]} */ ([]));
+/** @type {HTMLElement|null} */ let selectionBar=null;
+/** @type {import('./lib/types').TagDraft|null} */ let tagDraft=null;
+/** @type {string|null} */ let moveDraft=null;
+let selectionMode=false,selectionBusy=false;
 const draftDirty=()=>tagDraft && (tagDraft.checked.length!==tagDraft.common.length || tagDraft.checked.some(tag=>!tagDraft.common.includes(tag)));
 const updateSelection=()=>{
-  for(const card of container.querySelectorAll('.kv-card')) {
+  for(const card of /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.kv-card'))) {
     const selected=selectedPaths.has(card.dataset.path);card.classList.toggle('is-selected',selected);
     card.setAttribute('aria-label',`${card.dataset.path}${selected?msg("（選択中）"):''}`);
   }
-  for(const row of container.querySelectorAll('.kv-result-folder')) {
+  for(const row of /** @type {NodeListOf<HTMLButtonElement & {_selectionPaths?:string[]}>} */ (container.querySelectorAll('.kv-result-folder'))) {
     const paths=row._selectionPaths||[],count=paths.filter(path=>selectedPaths.has(path)).length;
     row.classList.toggle('is-selected',count>0 && count===paths.length);
     row.classList.toggle('is-partial',count>0 && count<paths.length);
     row.setAttribute('aria-pressed',count===0?'false':count===paths.length?'true':'mixed');
   }
   if(!selectionBar) return;
-  const controls=container.querySelector('.kv-controls');
+  const controls=/** @type {HTMLElement|null} */ (container.querySelector('.kv-controls'));
   if(controls) controls.inert=selectionBusy;
   selectionBar.hidden=!selectionMode;
-  selectionBar.querySelector('.kv-selection-count').textContent=msg("{0} 件選択", [selectedPaths.size]);
-  const edit=selectionBar.querySelector('.kv-selection-edit');
+  /** @type {HTMLElement|null} */ (selectionBar.querySelector('.kv-selection-count')).textContent=msg("{0} 件選択", [selectedPaths.size]);
+  const edit=/** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-edit'));
   edit.disabled=selectionBusy || !selectedPaths.size;
   selectionBar.querySelector('button').disabled=selectionBusy;
-  selectionBar.querySelector('.kv-selection-move').disabled=selectionBusy || !selectedPaths.size;
-  selectionBar.querySelector('.kv-selection-delete').disabled=selectionBusy || !selectedPaths.size;
-  const confirm=selectionBar.querySelector('.kv-selection-confirm');
+  /** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-move')).disabled=selectionBusy || !selectedPaths.size;
+  /** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-delete')).disabled=selectionBusy || !selectedPaths.size;
+  const confirm=/** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-confirm'));
   confirm.hidden=!draftDirty() && moveDraft===null;confirm.disabled=selectionBusy || !selectedPaths.size;
-  for(const [selector,stack] of [['.kv-undo',S.undoStack],['.kv-redo',S.redoStack]]) {
-    for(const button of container.querySelectorAll(selector)) button.disabled=selectionBusy || !stack.length;
+  for(const [selector,stack] of /** @type {[string,Snapshot[]][]} */ ([['.kv-undo',S.undoStack],['.kv-redo',S.redoStack]])) {
+    for(const button of /** @type {NodeListOf<HTMLButtonElement>} */ (container.querySelectorAll(selector))) button.disabled=selectionBusy || !stack.length;
   }
 };
+/** @param {string} path */
 const toggleSelection=path=>{
   if(selectionBusy) return;
   pushUndo();tagDraft=null;moveDraft=null;closePopup();
@@ -204,6 +251,7 @@ const toggleSelection=path=>{
   selectionMode=selectedPaths.size>0;
   updateSelection();
 };
+/** @param {string} folder */
 const toggleFolderSelection=folder=>{
   const paths=app.vault.getMarkdownFiles().filter(file=>file.path.startsWith(folder+'/')).map(file=>file.path);
   if(selectionBusy || !paths.length) return;
@@ -214,14 +262,15 @@ const toggleFolderSelection=folder=>{
   for(const path of paths) {if(remove) selectedPaths.delete(path);else selectedPaths.add(path);}
   selectionMode=selectedPaths.size>0;updateSelection();
 };
+/** @param {HTMLElement} anchor */
 const openMoveDropdown=anchor=>{
   if(selectionBusy || !selectedPaths.size) return;
-  const paths=[...selectedPaths],counts=new Map();
+  const paths=[...selectedPaths],counts=/** @type {Map<string,number>} */ (new Map());
   for(const path of paths) {const folder=path.includes('/')?path.slice(0,path.lastIndexOf('/')):'';counts.set(folder,(counts.get(folder)||0)+1);}
-  let target=moveDraft,query='';const expanded=new Set();
+  let target=moveDraft,query='';const expanded=new Set(/** @type {string[]} */ ([]));
   const folders=new Set(['']);
   for(const file of app.vault.getAllLoadedFiles?.()||app.vault.getMarkdownFiles()) {
-    const folder=Array.isArray(file.children)?file.path:file.path.split('/').slice(0,-1).join('/');
+    const folder=isFolder(file)?file.path:file.path.split('/').slice(0,-1).join('/');
     let prefix='';for(const part of folder.split('/').filter(Boolean)) {prefix=prefix?prefix+'/'+part:part;folders.add(prefix);}
   }
   const sorted=[...folders].sort((a,b)=>a.localeCompare(b));
@@ -257,10 +306,10 @@ const exitSelection=()=>{
   pushUndo();selectionMode=false;selectedPaths.clear();selectedFolders.clear();tagDraft=null;moveDraft=null;closePopup();updateSelection();
 };
 const prepareTagDraft=()=>{
-  const counts=new Map();
+  const counts=/** @type {Map<string,number>} */ (new Map());
   for(const path of selectedPaths) {
     const file=app.vault.getAbstractFileByPath(path);
-    for(const tag of noteTags(file && app.metadataCache.getFileCache(file)?.frontmatter)) counts.set(tag,(counts.get(tag)||0)+1);
+    for(const tag of noteTags(isFile(file)?app.metadataCache.getFileCache(file)?.frontmatter:null)) counts.set(tag,(counts.get(tag)||0)+1);
   }
   const common=[...counts.keys()].filter(tag=>counts.get(tag)===selectedPaths.size);
   return {common,partial:[...counts.keys()].filter(tag=>counts.get(tag)<selectedPaths.size),checked:[...common],counts:Object.fromEntries(counts),total:selectedPaths.size};
@@ -268,7 +317,7 @@ const prepareTagDraft=()=>{
 const deleteSelection=()=>{
   if(selectionBusy || !selectedPaths.size) return;
   closePopup();
-  const targets=[...selectedPaths].map(path=>({path,file:app.vault.getAbstractFileByPath(path)}));
+  const targets=[...selectedPaths].map(path=>{const file=app.vault.getAbstractFileByPath(path);return {path,file:isFile(file)?file:null};});
   const perform=async()=>{
     selectionBusy=true;updateSelection();
     try {
@@ -295,11 +344,14 @@ const confirmSelection=async()=>{
   selectionBusy=true;closePopup();updateSelection();
   try {
     const tags=add.length||remove.length?await editNoteTags(app,paths,add,remove):{changed:0,errors:[],changes:[]};
+    /** @type {{moved:{from:string,to:string}[],errors:string[],folders?:{from:string,to:string}[]}} */
     let moves={moved:[],errors:[]};
     if(destination!==null) {
       try {moves=await moveSelection(app,paths,[...selectedFolders],destination);} catch {moves.errors=paths;}
     }
-    const mapping=new Map(moves.moved.map(entry=>[entry.from,entry.to])),remap=path=>mapping.get(path)||path;
+    const mapping=new Map(moves.moved.map(entry=>[entry.from,entry.to]));
+    /** @param {string} path */
+    const remap=path=>mapping.get(path)||path;
     // Tag history follows renamed notes; moving files itself is not a history action.
     before._tagChanges=tags.changes;
     for(const snapshot of [before,...S.undoStack,...S.redoStack]) {
@@ -323,34 +375,39 @@ const editSelectionTags=()=>{
   if(selectionBusy || !selectedPaths.size) return;
   tagDraft=tagDraft||prepareTagDraft();
   const selected=new Set(tagDraft.checked);
-  openTagDropdown(selectionBar.querySelector('.kv-selection-edit'),'',checked=>{
+  openTagDropdown(/** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-edit')),'',()=>{},{onMultiSelect:checked=>{
     tagDraft.checked=checked;updateSelection();
-  },{selected,disabled:new Set(tagDraft.partial),extraTags:[...tagDraft.common,...tagDraft.partial],counts:tagDraft.counts,total:tagDraft.total,beforeChange:pushUndo});
+  },selected,disabled:new Set(tagDraft.partial),extraTags:[...tagDraft.common,...tagDraft.partial],counts:tagDraft.counts,total:tagDraft.total,beforeChange:pushUndo});
 };
-let pageScrollTimer;
+/** @type {number|undefined} */ let pageScrollTimer;
 document.addEventListener?.('scroll',event=>{
   const target=event.target;
   if(target!==document && !(target instanceof window.Element && target!==container && target.contains(container))) return;
   container.classList.add('kv-page-scrolling');clearTimeout(pageScrollTimer);
   pageScrollTimer=setTimeout(()=>container.classList.remove('kv-page-scrolling'),180);
 },{capture:true,passive:true,signal:lifetime.signal});
-const layouts = new Set();
+const layouts = new Set(/** @type {(()=>void)[]} */ ([]));
+/** @type {Page[]|null} */
 let pagesCache = null;
-const timers = new Set();
+const timers = new Set(/** @type {number[]} */ ([]));
+/** @param {()=>void} fn @param {number} delay */
 const setTimeout = (fn, delay) => { const id = window.setTimeout(() => { timers.delete(id); if (!disposed) fn(); }, delay); timers.add(id); return id; };
+/** @param {number|undefined|null} id */
 const clearTimeout = id => { window.clearTimeout(id); timers.delete(id); };
+/** @returns {Page[]} */
 const getPages = () => pagesCache || (pagesCache = app.vault.getMarkdownFiles().map(file => {
   const cache = app.metadataCache.getFileCache(file);
-  const tags = new Set();
+  const tags = new Set(/** @type {string[]} */ ([]));
   for (const tag of (cache ? getAllTags(cache) || [] : [])) {
     const parts = tag.replace(/^#/, '').split('/');
     for (let i = 1; i <= parts.length; i++) tags.add('#' + parts.slice(0, i).join('/'));
   }
-  return {file:{path:file.path, name:file.basename, folder:file.parent?.path === '/' ? '' : file.parent?.path || '', tags:[...tags], mtime:file.stat.mtime, ctime:file.stat.ctime, property:parseIsoTimestamp(cache?.frontmatter?.[settings.dateProperty])}};
+  const frontmatter=record(cache?.frontmatter);
+  return {file:{path:file.path, name:file.basename, folder:file.parent?.path === '/' ? '' : file.parent?.path || '', tags:[...tags], mtime:file.stat.mtime, ctime:file.stat.ctime, property:parseIsoTimestamp(frontmatter[settings.dateProperty]),...(settings.showDateGuidance!==false && !dateGuidanceShown.has(settings.dateProperty)?{propertyPresent:Object.hasOwn(frontmatter,settings.dateProperty),metadataReady:cache!==null && cache!==undefined}:{})}};
 }));
-const refreshLater = (...args) => scheduleRefresh(...args);
+const refreshLater = () => scheduleRefresh();
 let renderedPagesKey=null,pendingRefresh=false,forceRefresh=false;
-const scheduleRefresh = (() => { let timer; return () => { clearTimeout(timer); timer = setTimeout(()=>{
+const scheduleRefresh = (() => { /** @type {number|undefined} */ let timer=0; return () => { clearTimeout(timer); timer = setTimeout(()=>{
   if(document.hidden || container.clientWidth===0 || container.isConnected===false) {pendingRefresh=true;return;}
   pendingRefresh=false;
   if(forceRefresh || JSON.stringify(getPages())!==renderedPagesKey) {forceRefresh=false;render();}
@@ -362,13 +419,14 @@ const resumeView=()=>{
 };
 document.addEventListener?.('visibilitychange',()=>{if(!document.hidden) resumeView();},{signal:lifetime.signal});
 window.addEventListener?.('focus',resumeView,{signal:lifetime.signal});
-const takeSaved = () => Object.fromEntries([...SNAP_KEYS, 'folderGroupState', 'tagGroupState'].map(key => [key, deepClone(S[key])]));
+const takeSaved = () => deepClone({searchTree:S.searchTree,formula:S.formula,textQuery:S.textQuery,dateField:S.dateField,sortField:S.sortField,sortOrder:S.sortOrder,dateFrom:S.dateFrom,dateTo:S.dateTo,noTagOnly:S.noTagOnly,density:S.density,previewChars:S.previewChars,folderFilters:S.folderFilters,groupByFolder:S.groupByFolder,folderGroupState:S.folderGroupState,tagGroupState:S.tagGroupState});
 const PAGE_SIZE     = 30;
 const PREVIEW_CHARS = 150;
 const UNDO_MAX      = 50;
 
 // 非同期競合防止：レンダリングのシーケンス番号
 
+/** @type {import('./lib/types').ViewState} */
 const S = {
     searchTree      : { type: 'and', id: 'root', children: [] },
     formula         : '',
@@ -395,7 +453,7 @@ const S = {
     undoStack       : [],
     redoStack       : [],
 };
-Object.assign(S, JSON.parse(JSON.stringify(saved)));
+Object.assign(S, readState(saved));
 if(typeof S.textQuery!=='string') S.textQuery='';
 S.textQuery=S.textQuery.trim();
 if(S.previewChars===120 && !settings.previewLengths?.includes(120)) S.previewChars=150;
@@ -405,23 +463,24 @@ if (!Array.isArray(S.folderFilters)) S.folderFilters = [];
 if (!S.searchTree || !S.searchTree.type) S.searchTree = { type:'and', id:'root', children:[] };
 if (!S.searchTree.id) S.searchTree.id = 'root';
 
-const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+/** @param {()=>void} fn @param {number} ms */
+const debounce = (fn, ms) => { /** @type {number|undefined} */ let t=0; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
 const genId    = () => Math.random().toString(36).slice(2, 8);
 
 // structuredClone with fallback
-const deepClone = (obj) => {
-  if (typeof structuredClone === 'function') return structuredClone(obj);
-  return JSON.parse(JSON.stringify(obj));
-};
+const deepClone = clone;
 
+/** @param {unknown} val */
 const toMs = (val) => {
   if (val==null) return NaN;
-  if (typeof val.toMillis === 'function') return val.toMillis();
-  if (typeof val.valueOf  === 'function') return val.valueOf();
+  const object=record(val);
+  if (typeof object.toMillis === 'function') {const result=/** @type {()=>unknown} */ (object.toMillis).call(val);return typeof result==='number'?result:NaN;}
+  if (typeof val==='object') {const result=val.valueOf();return typeof result==='number'?result:NaN;}
   if (typeof val === 'number') return val;
   return new Date(String(val)).getTime();
 };
 
+/** @param {unknown} val */
 const relDate = (val) => {
   const ms = toMs(val);
   if (!Number.isFinite(ms)) return '';
@@ -439,12 +498,16 @@ const relDate = (val) => {
   return msg("{0}年前", [Math.floor(mo / 12)]);
 };
 
-const stripContent = (raw) => raw.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').replace(/!\[\[[^\]]+\]\]/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, alias) => alias || target).replace(/[#*`>_~]/g, '').trim();
+/** @param {string} raw */
+const stripContent = (raw) => raw.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').replace(/!\[\[[^\]]+\]\]/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, /** @param {string} _ @param {string} target @param {string} alias */ (_, target, alias) => alias || target).replace(/[#*`>_~]/g, '').trim();
+/** @param {string} raw */
 const extractThumb = (raw) => { const wiki = raw.match(/!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/); const md = raw.match(/!\[[^\]]*\]\(<?([^>\s)]+)>?(?:\s+"[^"]*")?\)/); return wiki ? wiki[1] : md ? md[1] : null; };
 
+/** @param {TagNode} tree @param {string} id @returns {{node:TagNode,parentArr:TagNode[]|null}|null} */
 const findById = (tree, id) => {
   if (tree.id === id) return { node: tree, parentArr: null };
-  const search = (node, parentArr) => {
+  /** @param {TagNode} node @param {TagNode[]} parentArr @returns {{node:TagNode,parentArr:TagNode[]}|null} */
+const search = (node, parentArr) => {
     if (node.id === id) return { node, parentArr };
     for (const child of (node.children || [])) {
       const r = search(child, node.children);
@@ -459,6 +522,7 @@ const findById = (tree, id) => {
   return null;
 };
 
+/** @param {string|null} parentId @param {TagNode} newNode */
 const addNode = (parentId, newNode) => {
   const parent = findById(S.searchTree, parentId || S.searchTree.id)?.node;
   if (!parent?.children || (parent.type === 'not' && parent.children.length)) return;
@@ -475,6 +539,7 @@ const addNode = (parentId, newNode) => {
   render();
 };
 
+/** @param {string} id */
 const removeNode = (id) => {
   pushUndo();
   const found = findById(S.searchTree, id);
@@ -486,6 +551,7 @@ const removeNode = (id) => {
   render();
 };
 
+/** @param {string} id @param {string} tag */
 const updateNodeTag = (id, tag) => {
   pushUndo();
   const found = findById(S.searchTree, id);
@@ -494,6 +560,7 @@ const updateNodeTag = (id, tag) => {
   render();
 };
 
+/** @param {string} id @param {string} newType */
 const changeType = (id, newType) => {
   pushUndo();
   const found = findById(S.searchTree, id);
@@ -512,6 +579,7 @@ const changeType = (id, newType) => {
 };
 
 // ノードをルートの上または下に並列配置
+/** @param {string} nodeId @param {string} position */
 const moveToRootLevel = (nodeId, position) => {
   // position: 'before' | 'after'
   pushUndo();
@@ -539,6 +607,7 @@ const moveToRootLevel = (nodeId, position) => {
 };
 
 // 通常のノード移動
+/** @param {string} nodeId @param {string|null} destParentId @param {number} destIndex */
 const moveNode = (nodeId, destParentId, destIndex) => {
   const source = findById(S.searchTree, nodeId);
   const destination = findById(S.searchTree, destParentId || S.searchTree.id);
@@ -570,13 +639,15 @@ const moveNode = (nodeId, destParentId, destIndex) => {
   render();
 };
 
-const SNAP_KEYS = ['searchTree','formula','textQuery','dateField','sortField','sortOrder','dateFrom','dateTo','noTagOnly','density','previewChars','folderFilters','groupByFolder'];
+const SNAP_KEYS = /** @type {const} */ (['searchTree','formula','textQuery','dateField','sortField','sortOrder','dateFrom','dateTo','noTagOnly','density','previewChars','folderFilters','groupByFolder']);
+/** @returns {Snapshot} */
 const takeSnap = () => {
-  const s={};SNAP_KEYS.forEach(k=>s[k]=deepClone(S[k]));
+  const s=/** @type {Snapshot} */ (takeSaved());
   s._selection={mode:selectionMode,paths:[...selectedPaths],folders:[...selectedFolders],draft:deepClone(tagDraft),destination:moveDraft};return s;
 };
+/** @param {Snapshot} s */
 const applySnap = s => {
-  SNAP_KEYS.forEach(k=>{if(s[k]!==undefined) S[k]=s[k];});S.formulaError='';
+  Object.assign(S,Object.fromEntries(SNAP_KEYS.filter(k=>s[k]!==undefined).map(k=>[k,s[k]])));S.formulaError='';
   if(s._selection) {
     selectionMode=s._selection.mode;selectedPaths.clear();s._selection.paths.forEach(path=>selectedPaths.add(path));
     selectedFolders.clear();(s._selection.folders||[]).forEach(path=>selectedFolders.add(path));
@@ -584,6 +655,7 @@ const applySnap = s => {
   }
 };
 const pushUndo = () => {S.undoStack.push(takeSnap());if(S.undoStack.length>UNDO_MAX) S.undoStack.shift();S.redoStack=[];};
+/** @param {Snapshot[]} from @param {Snapshot[]} to */
 const travelHistory = (from,to) => {
   if(selectionBusy || !from.length) return;
   const snapshot=from.pop(),inverse=takeSnap();
@@ -601,7 +673,7 @@ const doRedo = () => travelHistory(S.redoStack,S.undoStack);
 const refreshTagCache = () => {
   const rev = revision;
   if (S.tagRevision === rev && S.tagCache) return;
-  const counts = Object.create(null);
+  /** @type {Record<string,number>} */ const counts = dictionary();
   getPages().forEach(p => {
     (p.file.tags || []).forEach(t => {
       const tag = String(t).replace(/^#/, '');
@@ -612,19 +684,20 @@ const refreshTagCache = () => {
 };
 
 const buildFolderTree = () => {
-  const root = Object.create(null);
+  /** @type {Record<string,import('./lib/types').FolderNode>} */ const root = dictionary();
   getPages().forEach(p => {
     const parts = p.file.folder.split('/').filter(Boolean);
     let node = root; let path = '';
     parts.forEach(part => {
       path = path ? path+'/'+part : part;
-      if (!node[part]) node[part] = { name:part, path, children:Object.create(null) };
+      if (!node[part]) node[part] = { name:part, path, children:dictionary() };
       node = node[part].children;
     });
   });
   return root;
 };
 
+/** @param {TagNode} node @param {boolean} isRoot @returns {string} */
 const nodeToFormula = (node, isRoot) => {
   if (!node) return '';
   const t = node.type;
@@ -652,6 +725,7 @@ const nodeToFormula = (node, isRoot) => {
 const treeToFormula   = () => nodeToFormula(S.searchTree, true);
 const syncFormulaFromTree = () => { S.formula = treeToFormula(); S.formulaError = ''; };
 
+/** @param {string} str @returns {Token[]} */
 const tokenize = (str) => {
   const t=[]; let i=0;
   while(i<str.length){
@@ -668,8 +742,10 @@ const tokenize = (str) => {
   return t;
 };
 
+/** @param {TagNode} node @returns {TagNode} */
 const ensureId = (node) => { if(!node.id) node.id=genId(); if(node.children) node.children=node.children.map(ensureId); return node; };
 
+/** @param {string} input @returns {TagNode} */
 const parseFormula = (input) => {
   const str = input.trim();
   if (!str) return { type:'and', id:'root', children:[] };
@@ -681,16 +757,22 @@ const parseFormula = (input) => {
     : ensureId(result.node);
 };
 
+/** @param {Token[]} t @param {number} p @returns {ParsedNode} */
 const parseOr=(t,p)=>{let{node:l,pos:p2}=parseAnd(t,p);while(p2<t.length&&t[p2].type==='OR'){p2++;const{node:r,pos:p3}=parseAnd(t,p2);p2=p3;l=l.type==='or'?{type:'or',id:genId(),children:[...l.children,r]}:{type:'or',id:genId(),children:[l,r]};}return{node:l,pos:p2};};
+/** @param {Token[]} t @param {number} p @returns {ParsedNode} */
 const parseAnd=(t,p)=>{let{node:l,pos:p2}=parseNot(t,p);while(p2<t.length&&t[p2].type==='AND'){p2++;const{node:r,pos:p3}=parseNot(t,p2);p2=p3;l=l.type==='and'?{type:'and',id:genId(),children:[...l.children,r]}:{type:'and',id:genId(),children:[l,r]};}return{node:l,pos:p2};};
+/** @param {Token[]} t @param {number} p @returns {ParsedNode} */
 const parseNot=(t,p)=>{if(p<t.length&&t[p].type==='NOT'){const{node:c,pos:p2}=parseNot(t,p+1);return{node:{type:'not',id:genId(),children:[c]},pos:p2};}return parsePrimary(t,p);};
+/** @param {Token[]} t @param {number} p @returns {ParsedNode} */
 const parsePrimary=(t,p)=>{if(p>=t.length)throw new Error(msg("式が不完全です"));if(t[p].type==='LPAREN'){const{node,pos:p2}=parseOr(t,p+1);if(p2>=t.length||t[p2].type!=='RPAREN')throw new Error(msg(") が不足しています"));return{node,pos:p2+1};}if(t[p].type==='TAG')return{node:{type:'tag',id:genId(),tag:t[p].value},pos:p+1};throw new Error(msg("予期しないトークン: {0}", [t[p].type]));};
 
+/** @param {string} str */
 const syncTreeFromFormula = (str) => {
   try { S.searchTree=parseFormula(str); S.formulaError=''; }
-  catch(e) { S.formulaError=e.message; }
+  catch(e) { S.formulaError=errorMessage(e); }
 };
 
+/** @param {TagNode} node @param {string[]} tags @returns {boolean} */
 const evalNode = (node, tags) => {
   if (!node) return true;
   const t = node.type;
@@ -701,19 +783,22 @@ const evalNode = (node, tags) => {
   return true;
 };
 
+/** @param {Page} p @returns {import("./lib/types").ContentEntry} */
 const getContent = (p) => {
   const key = p.file.path + '::' + p.file.mtime;
   if (S.contentCache[key]) return S.contentCache[key];
-  const entry = {summary:'', thumb:null, loading:true};
+  const entry = /** @type {import("./lib/types").ContentEntry} */ ({summary:'', thumb:null, loading:true,promise:Promise.resolve()});
   S.contentCache[key] = entry;
   const file = app.vault.getAbstractFileByPath(p.file.path);
-  entry.promise = (file ? app.vault.cachedRead(file) : Promise.resolve('')).then(raw => {
+  entry.promise = (isFile(file) ? app.vault.cachedRead(file) : Promise.resolve('')).then(raw => {
     entry.summary = stripContent(raw); entry.markdown = markdownBody(raw); entry.thumb = extractThumb(raw);
   }).catch(() => { entry.summary = msg("プレビューを読み込めませんでした"); }).finally(() => { entry.loading = false; });
   return entry;
 };
 
+/** @type {Popup|null} */
 let _activePopup    = null;
+/** @type {AbortController|null} */
 let _activeAbortCtrl = null;
 
 const closePopup = () => {
@@ -722,9 +807,10 @@ const closePopup = () => {
   if (_activeAbortCtrl) { _activeAbortCtrl.abort(); _activeAbortCtrl = null; }
 };
 
+/** @param {HTMLElement} anchorEl @param {(popup:Popup)=>void} buildFn @param {{minWidth?:string}} opts @returns {Popup} */
 const openPopup = (anchorEl, buildFn, opts={}) => {
   closePopup();
-  const popup = (anchorEl.closest('.modal') || document.body).createDiv({cls:'keep-view-root kv-dropdown'});
+  const popup = /** @type {Popup} */ ((anchorEl.closest('.modal') || document.body).createDiv({cls:'keep-view-root kv-dropdown'}));
   if (opts.minWidth) popup.style.minWidth = opts.minWidth;
   _activePopup = popup;
   buildFn(popup);
@@ -763,7 +849,8 @@ const openPopup = (anchorEl, buildFn, opts={}) => {
   popup._reposition = position;
   const popupObserver = new window.ResizeObserver(position);
   popupObserver.observe(popup);
-  popup._cleanup = () => popupObserver.disconnect();
+  const releaseTooltips=suppressHoverTooltips(popup);
+  popup._cleanup = () => {popupObserver.disconnect();releaseTooltips();};
   const viewportResized = () => {
     // When the keyboard covers the anchor, scroll the note view enough to keep
     // both the button and a usable part of its menu above the keyboard.
@@ -793,13 +880,14 @@ const openPopup = (anchorEl, buildFn, opts={}) => {
   position();
   setTimeout(() => {
     document.addEventListener('pointerdown', (e) => {
-      if (!popup.contains(e.target) && !popup._anchor?.contains(e.target)) closePopup();
+      if (e.target instanceof window.Node && !popup.contains(e.target) && !popup._anchor?.contains(e.target)) closePopup();
     }, { signal: ctrl.signal });
   }, 0);
 
   return popup;
 };
 
+/** @param {HTMLElement} anchorEl @param {string} currentTag @param {(tag:string)=>void} onSelect @param {{selected?:Set<string>,disabled?:Set<string>,extraTags?:string[],counts?:Record<string,number>,total?:number,beforeChange?:()=>void,apply?:()=>void,onMultiSelect?:(tags:string[])=>void}} options */
 const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
   if(options.selected) {
     const tags=new Set([...options.selected,...(options.disabled||[]),...Object.keys(options.counts||{}).filter(tag=>options.counts[tag]>0)]);
@@ -808,16 +896,18 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
   openPopup(anchorEl, (popup) => {
     const searchInput = popup.createEl('input', {cls:'kv-dropdown-search', type:'text', placeholder:msg("タグを検索...")});
     const listEl = popup.createDiv();
-    let applyButton=null;
+    /** @type {HTMLButtonElement|null} */ let applyButton=null;
+    /** @param {string} tag */
     const choose=tag=>{
       if(options.disabled?.has(tag)) return;
       options.beforeChange?.();
       if(options.selected) {
         if(options.selected.has(tag)) options.selected.delete(tag);else options.selected.add(tag);
-        onSelect([...options.selected]);renderList(searchInput.value);
+        options.onMultiSelect?.([...options.selected]);renderList(searchInput.value);
         if(applyButton) applyButton.disabled=!options.selected.size;
       } else {onSelect(tag);closePopup();}
     };
+    /** @param {HTMLElement} row @param {string} tag */
     const mark=(row,tag)=>{
       if(!options.selected) return;
       const check=dropdownCheckbox(row,{label:tag,checked:options.selected.has(tag)});
@@ -830,9 +920,10 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
       if(count>0) row.createSpan({cls:'kv-tag-count',text:msg("{0}/{1}", [count, options.total])});
     };
 
+    /** @param {HTMLElement} container @param {string} prefix @param {number} depth @param {string} filterText */
     const renderTagNode = (container, prefix, depth, filterText) => {
       const all = [...new Set([...Object.keys(S.tagCache||{}),...(options.extraTags||[])])].sort();
-      const groups = Object.create(null); const leaves = [];
+      /** @type {Record<string,string[]>} */ const groups = dictionary(); const leaves = /** @type {string[]} */ ([]);
       all.forEach(tag => {
         if (filterText && !tag.toLowerCase().includes(filterText.toLowerCase())) return;
         if (prefix) {
@@ -881,6 +972,7 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
       }
     };
 
+    /** @param {string} filter */
     const renderList = (filter) => { listEl.empty(); renderTagNode(listEl,'',0,filter); };
     renderList('');
     if(options.apply) {
@@ -893,15 +985,19 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
   });
 };
 
+/** @param {HTMLElement} anchorEl */
 const openFolderDropdown = (anchorEl) => {
+  /** @type {Popup|null} */
   let popupEl = null;
 
   const rebuild = () => { if (!popupEl) return; popupEl.empty(); buildContent(popupEl); };
 
+  /** @param {HTMLElement} container */
   const buildContent = (container) => {
     const folderTree = buildFolderTree();
 
     // 全フォルダパスを収集（再帰）
+    /** @param {import("./lib/types").FolderNode} nodeObj @returns {string[]} */
     const getAllPaths = (nodeObj) => {
       const paths = [nodeObj.path];
       Object.values(nodeObj.children).forEach(child => paths.push(...getAllPaths(child)));
@@ -924,6 +1020,7 @@ const openFolderDropdown = (anchorEl) => {
     const {item:rootRow} = folderDropdownRow(container,{name:msg("(ルート)"),selected:S.folderFilters.includes('')});
     rootRow.onclick = (e) => { e.stopPropagation(); pushUndo(); S.folderFilters = S.folderFilters.includes('') ? S.folderFilters.filter(p => p !== '') : [...S.folderFilters, '']; S.limit=PAGE_SIZE; rebuild(); render(); };
 
+    /** @param {import("./lib/types").FolderNode} nodeObj @param {number} depth */
     const renderFolderNode = (nodeObj, depth) => {
       const hasChildren = Object.keys(nodeObj.children).length > 0;
       const isOpen = S.folderGroupState[nodeObj.path] ?? false;
@@ -971,6 +1068,7 @@ const openFolderDropdown = (anchorEl) => {
   popupEl._isFolderDropdown = true;
 };
 
+/** @param {HTMLElement} anchorEl @param {string} nodeId @param {string} currentType @param {boolean} isRoot */
 const openTypePopup = (anchorEl, nodeId, currentType, isRoot) => {
   openPopup(anchorEl, (popup) => {
     popup.classList.add('kv-type-popup');
@@ -991,17 +1089,21 @@ const openTypePopup = (anchorEl, nodeId, currentType, isRoot) => {
 };
 
 // zones: { lineEl, parentId, index, isRootLevel }
-const _zones = [];
+/** @typedef {{lineEl:HTMLElement,parentId:string|null,index:number,isRootLevel:boolean}} DropZone */
+const _zones = /** @type {DropZone[]} */ ([]);
 const clearZones = () => { _zones.length = 0; };
+/** @param {HTMLElement} lineEl @param {string|null} parentId @param {number} index @param {boolean} isRootLevel */
 const registerZone = (lineEl, parentId, index, isRootLevel=false) => {
   _zones.push({lineEl, parentId, index, isRootLevel});
 };
 
+/** @type {HTMLElement|null} */
 let _activeLine = null;
 const clearHighlight = () => { if(_activeLine){_activeLine.classList.remove('is-visible');_activeLine=null;} };
 
+/** @param {number} clientY */
 const getNearestZone = (clientY) => {
-  let best=null, bestDist=Infinity;
+  /** @type {DropZone|null} */ let best=null;let bestDist=Infinity;
   _zones.forEach(z=>{
     const r = z.lineEl.getBoundingClientRect();
     const cy = r.top + r.height/2;
@@ -1011,6 +1113,7 @@ const getNearestZone = (clientY) => {
   return bestDist < 60 ? best : null;
 };
 
+/** @param {HTMLElement} handleEl @param {string} nodeId */
 const setupDragHandle = (handleEl, nodeId) => {
   handleEl.addEventListener('pointerdown', (e) => {
     if (e.button!==0) return;
@@ -1025,16 +1128,19 @@ const setupDragHandle = (handleEl, nodeId) => {
     ghost.textContent = srcFound.node.type==='tag' ? ('#'+(srcFound.node.tag||'?')) : msg(srcFound.node.type.toUpperCase());
     document.body.appendChild(ghost);
 
+    /** @param {number} cx @param {number} cy */
     const upd = (cx,cy) => { ghost.style.left=(cx+12)+'px'; ghost.style.top=(cy-10)+'px'; };
     upd(e.clientX, e.clientY);
     row.classList.add('is-dragging');
 
+    /** @param {PointerEvent} e */
     const onMove = (e) => {
       upd(e.clientX, e.clientY);
       clearHighlight();
       const z = getNearestZone(e.clientY);
       if (z) { z.lineEl.classList.add('is-visible'); _activeLine=z.lineEl; }
     };
+    /** @param {PointerEvent} e */
     const onUp = (e) => {
       dragCleanup?.();
       dragCleanup = null;
@@ -1063,6 +1169,7 @@ const setupDragHandle = (handleEl, nodeId) => {
 
 window.addEventListener?.('blur',()=>{dragCleanup?.();dragCleanup=null;container.querySelectorAll('.kv-scroll-rail.is-dragging').forEach(el=>el.dispatchEvent(new window.Event('pointercancel')));},{signal:lifetime.signal});
 
+/** @param {HTMLElement} container @param {string|null} parentId @param {string} parentType */
 const renderAddBtn = (container, parentId, parentType) => {
   const addRow = container.createDiv({cls:'kv-add-row'});
   const indCls = parentType ? `kv-add-indicator-${parentType}` : 'kv-add-indicator-root';
@@ -1072,18 +1179,19 @@ const renderAddBtn = (container, parentId, parentType) => {
   addBtn.createSpan({text:msg('追加')});
   if(parentType==='not') addBtn.setAttribute('aria-label',msg('NOTの対象を追加'));
 
+  /** @type {HTMLElement|null} */
   let menuEl = null;
   addBtn.onclick = (e) => {
     e.stopPropagation();
     if (menuEl) { menuEl.remove(); menuEl=null; return; }
-    menuEl = addRow.createDiv({style:'display:inline-flex;gap:4px;margin-left:4px;flex-wrap:wrap;'});
+    menuEl = addRow.createDiv({cls:'kv-node-add-menu'});
     [{type:'tag',label:'TAG',cls:'kv-node-type-tag'},{type:'and',label:'AND',cls:'kv-node-type-and'},
      {type:'or',label:'OR',cls:'kv-node-type-or'},{type:'not',label:'NOT',cls:'kv-node-type-not'}]
     .forEach(({type,label,cls}) => {
       menuEl.createSpan({cls:`kv-node-type ${cls}`,text:label})
         .onclick = (e) => {
           e.stopPropagation();
-          const n = {type, id:genId()};
+          const n = /** @type {TagNode} */ ({type, id:genId()});
           if (type==='tag') n.tag=''; else n.children=[];
           addNode(parentId, n);
         };
@@ -1092,6 +1200,7 @@ const renderAddBtn = (container, parentId, parentType) => {
   };
 };
 
+/** @param {HTMLElement} container @param {TagNode} node @param {string|null} parentId @param {number} insertIndex */
 const renderTreeNode = (container, node, parentId, insertIndex) => {
   const dl = container.createDiv({cls:'kv-drop-line'});
   registerZone(dl, parentId, insertIndex);
@@ -1136,6 +1245,7 @@ const renderTreeNode = (container, node, parentId, insertIndex) => {
   }
 };
 
+/** @param {HTMLElement} container */
 const renderRootTree = (container) => {
   clearZones();
 
@@ -1145,7 +1255,7 @@ const renderRootTree = (container) => {
   registerZone(lineBefore, null, 0, true);
 
   // ルートバッジ（左端固定・シンプルに）
-  const rootRow = container.createDiv({cls:'kv-node-row', style:'padding-left:0;margin-bottom:4px;'});
+  const rootRow = container.createDiv({cls:'kv-node-row kv-root-node-row'});
   const rootBadge = rootRow.createSpan({cls:`kv-node-type kv-node-type-${S.searchTree.type}`, text:msg(S.searchTree.type.toUpperCase())});
   rootBadge.onclick = (e) => { e.stopPropagation(); openTypePopup(rootBadge, null, S.searchTree.type, true); };
 
@@ -1184,7 +1294,7 @@ const getColCount = (width = container.clientWidth) => {
 // Cards observe their own available width. Rebuilding the header here would
 // destroy a focused dropdown during viewport/keyboard transitions.
 const fitPreviewLabels=()=>{
-  for(const select of container.querySelectorAll('.kv-preview-select')) {
+  for(const select of /** @type {NodeListOf<HTMLSelectElement>} */ (container.querySelectorAll('.kv-preview-select'))) {
     const style=window.getComputedStyle(select),context=document.createElement('canvas').getContext('2d');
     context.font='12px '+style.fontFamily;
     const available=select.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);
@@ -1194,14 +1304,16 @@ const fitPreviewLabels=()=>{
 };
 const observer = new window.ResizeObserver(() => {_activePopup?._reposition();fitPreviewLabels();if(pendingRefresh && container.clientWidth>0) refreshLater();});
 observer.observe(container);
+/** @param {HTMLElement} container @param {Page[]} pages */
 const buildMasonry = (container, pages) => {
   const masonry = container.createDiv({cls:`kv-masonry density-${S.density}`});
   masonry.classList.add('kv-layout-pending');
-  const cards = [];
-  const components=[];
-  const contentObservers=[];
+  const cards = /** @type {HTMLDivElement[]} */ ([]);
+  const components=/** @type {Component[]} */ ([]);
+  const contentObservers=/** @type {MutationObserver[]} */ ([]);
   let stopped=false;
 
+  /** @param {Page} p */
   const addCard = (p) => {
     const content = getContent(p);
     const tags = (p.file.tags||[]).map(t=>String(t));
@@ -1210,21 +1322,26 @@ const buildMasonry = (container, pages) => {
     cards.push(card);
     card.dataset.path = p.file.path;
     card.tabIndex = 0; card.setAttribute('role', 'link');
-    let pressTimer=null,pressOrigin=null,suppressClick=false,openTimer=null,textSelectionAtDown=false,lastTap=null;
-    const scrollbarTarget=event=>event.target.closest('.kv-scroll-rail');
+    /** @type {number|null} */ let pressTimer=null;
+    /** @type {number|null} */ let openTimer=null;
+    /** @type {{x:number,y:number}|null} */ let pressOrigin=null;
+    /** @type {{at:number,x:number,y:number}|null} */ let lastTap=null;
+    let suppressClick=false,textSelectionAtDown=false;
+    /** @param {Event} event */
+    const scrollbarTarget=event=>event.target instanceof window.Element?event.target.closest('.kv-scroll-rail'):null;
     const hasTextSelection=()=>{const selection=window.getSelection();return selection && !selection.isCollapsed && (card.contains(selection.anchorNode)||card.contains(selection.focusNode));};
     const cancelOpen=()=>{if(openTimer!==null) clearTimeout(openTimer);openTimer=null;};
     const openCard=()=>{
       cancelOpen();
       if(!card.isConnected || selectionMode || hasTextSelection()) return;
       const file=app.vault.getAbstractFileByPath(p.file.path);
-      if(file) openNoteInForeground(app,file).catch(error=>new Notice(msg("ノートを開けませんでした: {0}", [error.message])));
+      if(isFile(file)) openNoteInForeground(app,file).catch(error=>new Notice(msg("ノートを開けませんでした: {0}", [errorMessage(error)])));
     };
 
     const cancelPress=()=>{if(pressTimer!==null) clearTimeout(pressTimer);pressTimer=null;};
     card.onpointerdown=event=>{
       cancelOpen();textSelectionAtDown=!!hasTextSelection();
-      if(event.button!==0 || event.target.closest('a,button,input,textarea,select')) return;
+      if(event.button!==0 || (event.target instanceof window.Element && event.target.closest('a,button,input,textarea,select'))) return;
       if(scrollbarTarget(event)) {cancelPress();return;}
       if(container.classList.contains('kv-page-scrolling')) return;
       suppressClick=false;pressOrigin={x:event.clientX,y:event.clientY};
@@ -1240,7 +1357,7 @@ const buildMasonry = (container, pages) => {
     };
     card.onclick = (event) => {
       if(scrollbarTarget(event)) return;
-      if(event.target.closest('a,button,input,textarea,select')) return;
+      if((event.target instanceof window.Element && event.target.closest('a,button,input,textarea,select'))) return;
       if(suppressClick) {suppressClick=false;return;}
       if(hasTextSelection()) return;
       if(selectionMode || event.ctrlKey || event.metaKey) {toggleSelection(p.file.path);return;}
@@ -1250,9 +1367,10 @@ const buildMasonry = (container, pages) => {
       if(event.detail===0) openCard();else openTimer=setTimeout(openCard,320);
     };
 
+    /** @param {MouseEvent} event */
     const selectText=event=>{
       cancelOpen();cancelPress();
-      if(selectionMode || !event.target.closest('.kv-card-title,.kv-card-preview') || event.target.closest('a,button,input')) return;
+      if(selectionMode || !(event.target instanceof window.Element) || !event.target.closest('.kv-card-title,.kv-card-preview') || event.target.closest('a,button,input')) return;
       if(hasTextSelection()) return;
       const caret=document.caretPositionFromPoint?.(event.clientX,event.clientY);
       const legacy=caret?null:document.caretRangeFromPoint?.(event.clientX,event.clientY);
@@ -1280,19 +1398,20 @@ const buildMasonry = (container, pages) => {
     body.createDiv({cls:'kv-card-title', text:p.file.name});
     if (S.density !== 'compact') {
       const wrap=body.createDiv({cls:'kv-preview-wrap'});
-      const preview=wrap.createDiv({cls:'kv-card-preview'});
+      const preview=/** @type {HTMLDivElement & {_syncScrollbar?:()=>void}} */ (wrap.createDiv({cls:'kv-card-preview'}));
       preview.id='kv-preview-'+genId();
       const rail=wrap.createDiv({cls:'kv-scroll-rail'});
       const thumb=rail.createDiv({cls:'kv-scroll-thumb'});
       rail.tabIndex=0;rail.setAttribute('role','scrollbar');rail.setAttribute('aria-label',msg("本文をスクロール"));rail.setAttribute('aria-orientation','vertical');
       rail.setAttribute('aria-controls',preview.id);
       rail.setAttribute('aria-valuemin','0');
-      let drag=null;
+      /** @type {{y:number,top:number,ratio:number}|null} */ let drag=null;
       const syncScrollbar=()=>{
+        for(const input of preview.querySelectorAll('li > input[type=checkbox],li > p > input[type=checkbox]')) input.closest('li')?.classList.add('kv-task-item');
         for(const element of preview.querySelectorAll('[title]')) element.removeAttribute('title');
         // Keep diagram coordinates at their rendered size instead of shrinking
         // every label to fit a narrow card. The diagram can scroll horizontally.
-        for(const svg of preview.querySelectorAll('.mermaid svg')) {
+        for(const svg of /** @type {NodeListOf<SVGSVGElement>} */ (preview.querySelectorAll('.mermaid svg'))) {
           const bounds=svg.viewBox?.baseVal;
           if(bounds?.width>0 && bounds.height>0) {
             svg.style.width=bounds.width+'px';svg.style.height=bounds.height+'px';svg.classList.add('kv-measured-svg');
@@ -1358,9 +1477,10 @@ const buildMasonry = (container, pages) => {
         };
     });
     const dateField = S.sortField === 'name' ? S.dateField : S.sortField;
-    const date = p.file[dateField];
+    const date = dateField==='mtime'?p.file.mtime:p.file.property;
     footer.createSpan({cls:'kv-card-date', text:date===null?msg("日時なし"):relDate(date), });
   };
+  /** @type {number|null} */
   let frame = null;
   const layout = () => {
     frame = null;
@@ -1370,7 +1490,7 @@ const buildMasonry = (container, pages) => {
     const gap = parseFloat(window.getComputedStyle(masonry).getPropertyValue('--kv-card-gap')) || 12;
     const width = Math.max(1,(masonry.clientWidth-gap*(columns-1))/columns);
     for (const card of cards) card.style.width = width+'px';
-    for(const card of cards) {const preview=card.querySelector('.kv-card-preview');if(preview) {preview.classList.toggle('is-scrollable',preview.scrollHeight>preview.clientHeight+1);preview._syncScrollbar?.();}}
+    for(const card of cards) {const preview=/** @type {HTMLElement & {_syncScrollbar?:()=>void}|null} */ (card.querySelector('.kv-card-preview'));if(preview) {preview.classList.toggle('is-scrollable',preview.scrollHeight>preview.clientHeight+1);preview._syncScrollbar?.();}}
     const {positions,height} = masonryPositions(cards.map(card=>card.getBoundingClientRect().height),columns,gap);
     cards.forEach((card,index) => {
       const {column,top} = positions[index];
@@ -1386,6 +1506,7 @@ const buildMasonry = (container, pages) => {
   cardObserver.observe(masonry);
   const cleanup = () => { stopped=true; contentObservers.forEach(observer=>observer.disconnect()); components.forEach(component=>component.unload()); cardObserver.disconnect(); if (frame!==null) window.cancelAnimationFrame(frame); };
   layouts.add(cleanup);
+  /** @param {Page[]} items */
   const append=items=>{
     const start=cards.length;items.forEach(addCard);
     cards.slice(start).forEach(card=>cardObserver.observe(card));layout();
@@ -1393,13 +1514,14 @@ const buildMasonry = (container, pages) => {
   append(pages);updateSelection();return {append};
 };
 
+/** @param {Page[]} arr */
 const sortArr = (arr) => {
   const dir = S.sortOrder==='asc' ? 1 : -1;
   if (S.sortField === 'name') {
     return [...arr].sort((a,b) => dir * a.file.name.localeCompare(b.file.name, undefined, {sensitivity:'base'}));
   }
   return [...arr].sort((a,b) => {
-    const first=a.file[S.sortField], second=b.file[S.sortField];
+    const first=S.sortField==='mtime'?a.file.mtime:a.file.property, second=S.sortField==='mtime'?b.file.mtime:b.file.property;
     if (first==null || second==null) return first==null && second==null ? a.file.path.localeCompare(b.file.path) : first==null ? 1 : -1;
     return dir*(toMs(first)-toMs(second)) || a.file.path.localeCompare(b.file.path);
   });
@@ -1418,6 +1540,7 @@ const candidatePages = () => {
   return pages;
 };
 const filteredPages = () => sortArr(candidatePages().filter(page=>!S.textQuery || searchState.matches.has(page.file.path)));
+/** @param {string} path */
 const topFolder=path=>path.includes('/')?path.split('/')[0]:'';
 
 const ensureSearch=()=>{
@@ -1428,11 +1551,11 @@ const ensureSearch=()=>{
     const left=topFolder(a.file.path),right=topFolder(b.file.path);
     return left===right?0:!left?1:!right?-1:left.localeCompare(right);
   });
-  const files=query?ordered.map(page=>app.vault.getAbstractFileByPath(page.file.path)).filter(Boolean):[];
+  const files=query?ordered.map(page=>app.vault.getAbstractFileByPath(page.file.path)).filter(isFile):[];
   const key=JSON.stringify([query,S.groupByFolder,files.map(file=>[file.path,file.stat.mtime,file.stat.size])]);
   if(searchState.key===key) return;
   cardSearch.cancel();
-  const run=searchState={key,ready:!query,matches:new Set(),errors:[],files:new Set(files.map(file=>file.path)),completed:0,total:files.length,slow:false};
+  const run=searchState=/** @type {SearchState} */ ({key,ready:!query,matches:new Set(),errors:[],files:new Set(files.map(file=>file.path)),completed:0,total:files.length,slow:false});
   if(!query) {cardSearch.clear();return;}
   const updateProgress=()=>{
     if(disposed || searchState!==run || run.ready) return;
@@ -1465,15 +1588,17 @@ const ensureSearch=()=>{
   }).finally(()=>clearTimeout(slowTimer));
 };
 
+/** @param {HTMLButtonElement} button @param {string|null} folder */
 const createAndOpenNote=async(button,folder)=>{
   if(button.disabled) return;
   button.disabled=true;
   try {
     const file=await createNote(app,settings.dateProperty,folder,settings.creationTimeZone || '');
     await openNoteInForeground(app,file);
-  } catch(error) {new Notice(msg("ノートを作成できませんでした: {0}", [error.message]));}
+  } catch(error) {new Notice(msg("ノートを作成できませんでした: {0}", [errorMessage(error)]));}
   finally {button.disabled=false;}
 };
+/** @param {Page[]} visible */
 const trimContentCache=visible=>{
   const activeKeys=new Set(visible.map(page=>page.file.path+'::'+page.file.mtime));
   const cached=Object.keys(S.contentCache);
@@ -1484,33 +1609,37 @@ const trimContentCache=visible=>{
   }
 };
 const treeFolderPaths = () => {
-  const collect=node=>[...node.children.values()].flatMap(child=>[child.key ?? child.path,...collect(child)]);
+  /** @param {import("./lib/types").ResultFolder} node @returns {string[]} */
+  const collect=node=>[...node.children.values()].flatMap(child=>[child.path,...collect(child)]);
   return collect(resultFolderTree(filteredPages()));
 };
 const updateTreeAction = () => {
-  const button=container.querySelector('.kv-collapse-all');if(!button) return;
+  const button=/** @type {HTMLButtonElement|null} */ (container.querySelector('.kv-collapse-all'));if(!button) return;
   const paths=treeFolderPaths(),open=paths.some(path=>S.resultTreeOpen[path]===true);
   button.empty();setIcon(button,open?'chevrons-down-up':'chevrons-up-down');
   button.setAttribute('aria-label',msg(open?'すべて折りたたむ':'すべて展開'));button.disabled=!paths.length;
 };
+/** @param {CardBody} bodyEl @param {Page[]} pages @param {boolean} appendGroups */
 const renderCards = (bodyEl, pages, appendGroups=false) => {
   const finishScroll=preserveScroll(bodyEl);
   if(!appendGroups) {
     for (const cleanup of layouts) cleanup();
     layouts.clear(); bodyEl.empty();bodyEl._treeGroups=new Set();
   }
-  const visible=[];
+  const visible=/** @type {Page[]} */ ([]);
+  /** @param {HTMLElement} parent @param {Page[]} items */
   const showCards=(parent,items)=>{visible.push(...items);return buildMasonry(parent,items);};
   if (!pages.length) bodyEl.createDiv({cls:'kv-empty',text:msg("該当するメモが見つかりません")});
   else if (S.groupByFolder) {
     const tree=resultFolderTree(pages);
     const nodes=[...tree.children.values()];
     const redraw=()=>renderCards(bodyEl,filteredPages());
+    /** @param {HTMLElement} parent @param {import("./lib/types").ResultFolder} node */
     const drawNotes=(parent,node)=>{
       if(!node.pages.length) return;
       const limit=S.resultTreeLimits[node.path]||PAGE_SIZE;
       const notes=parent.createDiv({cls:'kv-direct-notes'});
-      let grid=null;
+      /** @type {ReturnType<typeof buildMasonry>|null} */ let grid=null;
       if(node.pages.length>limit) {
         const wrap=notes.createDiv({cls:'kv-folder-more'});
         const more=wrap.createEl('button',{cls:'kv-load-more-btn',text:msg("さらに表示 (残り {0} 件)", [node.pages.length-limit])});
@@ -1520,7 +1649,7 @@ const renderCards = (bodyEl, pages, appendGroups=false) => {
       const mount=()=>{
         const pagination=notes.querySelector('.kv-folder-more');
         grid=showCards(notes,node.pages.slice(0,limit));
-        if(pagination) {notes.appendChild(pagination);pagination.firstElementChild.disabled=false;}
+        if(pagination) {notes.appendChild(pagination);/** @type {HTMLButtonElement} */ (pagination.firstElementChild).disabled=false;}
         notes.style.removeProperty('min-height');
       };
       if(deferTreeCards && window.IntersectionObserver) {
@@ -1536,26 +1665,29 @@ const renderCards = (bodyEl, pages, appendGroups=false) => {
         layouts.add(()=>{active=false;observer.disconnect();});
       } else mount();
     };
+    /** @param {import("./lib/types").ResultFolder} node @returns {string[]} */
     const nodePaths=node=>[...node.pages.map(page=>page.file.path),...[...node.children.values()].flatMap(nodePaths)];
+    /** @param {HTMLElement} parent @param {import("./lib/types").ResultFolder} node */
     const drawNode=(parent,node)=>{
       const branch=parent.createDiv({cls:'kv-result-branch'});
-      const key=node.key ?? node.path;
+      const key=node.path;
       branch.dataset.folder=node.path;
       const open=S.resultTreeOpen[key]===true;
       const heading=branch.createDiv({cls:'kv-result-folder-heading'});
-      const toggle=heading.createEl('button',{cls:'kv-result-folder'});
+      const toggle=/** @type {HTMLButtonElement & {_selectionPaths?:string[]}} */ (heading.createEl('button',{cls:'kv-result-folder'}));
       toggle.setAttribute('aria-expanded',String(open));
       const arrow=disclosureIcon(toggle,open);
       toggle.createSpan({cls:'kv-result-folder-name',text:node.name});toggle.createSpan({cls:'kv-result-count',text:String(node.count)});
       const add=iconButton(heading,'square-pen',msg("{0} に新規ノート", [node.name]));add.classList.add('kv-folder-create');
       add.onclick=()=>createAndOpenNote(add,node.path);
       toggle._selectionPaths=nodePaths(node);
-      let press=null,origin=null,suppress=false;
+      /** @type {number|null} */ let press=null;
+      /** @type {{x:number,y:number}|null} */ let origin=null;let suppress=false;
       const cancel=()=>{if(press!==null) clearTimeout(press);press=null;};
       const expand=()=>{if(selectionBusy) return;animateDisclosure(arrow,!arrow.classList.contains('is-open'),value=>{S.resultTreeOpen[key]=value;redraw();});};
       arrow.onclick=event=>{event.stopPropagation();if(suppress) {suppress=false;return;}expand();};
       toggle.onpointerdown=event=>{
-        if(event.button!==0 || event.target.closest('.kv-result-folder > span:first-child')) return;
+        if(event.button!==0 || (event.target instanceof window.Element && event.target.closest('.kv-result-folder > span:first-child'))) return;
         suppress=false;origin={x:event.clientX,y:event.clientY};
         press=setTimeout(()=>{press=null;if(toggle.isConnected){suppress=true;toggleFolderSelection(node.path);}},500);
       };
@@ -1581,6 +1713,7 @@ const renderCards = (bodyEl, pages, appendGroups=false) => {
 };
 
 // Leave the existing cards mounted while reading and appending the next batch.
+/** @param {HTMLButtonElement} button @param {Page[]} pages @param {number} limit @param {(pages:Page[])=>void} append @param {(value:number)=>void} setLimit */
 const appendMore=async(button,pages,limit,append,setLimit)=>{
   button.disabled=true;
   const next=pages.slice(limit,limit+PAGE_SIZE);
@@ -1614,6 +1747,7 @@ const getScrollContainer = () => {
 // Replacing cards temporarily collapses the scroll height. Reserve it until
 // asynchronous previews and their measured layout settle; never lock scrolling.
 const scrollGuards=new WeakMap();
+/** @param {HTMLElement} element */
 const preserveScroll = element => {
   const scroller=getScrollContainer(), top=scroller?.scrollTop;
   const token={};scrollGuards.set(element,token);
@@ -1636,7 +1770,7 @@ const render = () => {
   if (_activePopup && !_activePopup._isFolderDropdown) closePopup();
 
   const root = container;
-  const oldInput = root.querySelector('.kv-formula-input');
+  const oldInput = /** @type {HTMLInputElement|null} */ (root.querySelector('.kv-formula-input'));
   const focused = document.activeElement === oldInput;
   const draft = oldInput?.value;
   const selection = oldInput ? [oldInput.selectionStart, oldInput.selectionEnd] : null;
@@ -1717,6 +1851,7 @@ const render = () => {
       S.resultTreeOpen=open?{}:Object.fromEntries(paths.map(path=>[path,true]));renderCards(bodyEl,pages);
     };
   }
+  actions.classList.toggle('has-search',!!S.textQuery);
   const statusSlot=S.textQuery?actions.createDiv({cls:'kv-search-status-slot'}):null;
   const outputActions=actions.createDiv({cls:'kv-output-actions'});
   const counter = outputActions.createSpan({cls:'kv-counter', text:''});
@@ -1804,7 +1939,7 @@ const render = () => {
     placeholder: msg("例: #仕事 AND NOT #完了 AND (#重要 OR #緊急)"),
   });
   formulaInput.value = focused ? draft : S.formula;
-  if (focused) { formulaInput.focus(); formulaInput.setSelectionRange(...selection); }
+  if (focused) { formulaInput.focus(); formulaInput.setSelectionRange(selection[0],selection[1]); }
 
   const applyFormula = () => {
     const val = formulaInput.value;
@@ -1814,6 +1949,7 @@ const render = () => {
   formulaInput.addEventListener('blur', applyFormula);
   formulaInput.addEventListener('keydown', (e) => { if(e.key==='Enter'){e.preventDefault();applyFormula();} });
 
+  /** @param {string} query @param {HTMLElement} anchorEl */
   const openSuggest = (query, anchorEl) => {
     const allTags = Object.keys(S.tagCache||{}).sort();
     const candidates = allTags.filter(t => t.toLowerCase().startsWith(query.toLowerCase())).slice(0, 12);
@@ -1872,29 +2008,38 @@ const render = () => {
     const missing = getPages().filter(page=>page.file.property===null).length;
     counter.title = msg("{0}: Vault 全体で {1} 件が未設定または無効。並び替えでは末尾、期間指定では除外。", [settings.dateProperty, missing]);
   }
-  let status=null;
+  /** @type {HTMLElement|null} */ let status=null;
   if(searching) {
     status=statusSlot.createDiv({cls:'kv-search-status'});status.setAttribute('role','status');
     status.createDiv({text:searchState.waiting?msg("全文検索ボタンから検索を再開してください"):msg("検索中… {0} / {1} 件", [searchState.completed, searchState.total])});
     status.createDiv({cls:'kv-search-hint',text:searchState.slow?msg("初回・更新時は時間がかかる場合があります"):''});
   }
-  const bodyEl=root.createDiv({cls:'kv-body-wrapper'});
+  const bodyEl=/** @type {CardBody} */ (root.createDiv({cls:'kv-body-wrapper'}));
   const pagWrap=root.createDiv({cls:'kv-load-more-wrap kv-body-wrapper'});
   const run=searchState;
   let shown=0,treeStarted=false,painting=false,again=false,paintTimer=null;
+  const canPaint=()=>{
+    if(disposed || searchState!==run) return false;
+    // ItemView.onOpen can run before its content joins the workspace DOM.
+    if(!bodyEl.isConnected) {
+      if(container.contains(bodyEl)) {pendingRefresh=true;forceRefresh=true;}
+      return false;
+    }
+    return true;
+  };
   const paintResults=async()=>{
-    if(disposed || searchState!==run || !bodyEl.isConnected) return;
+    if(!canPaint()) return;
     if(painting) {again=true;return;}
     painting=true;
     try {
       do {
         again=false;
-        if(disposed || searchState!==run || !bodyEl.isConnected) return;
+        if(!canPaint()) return;
         const current=filteredPages();
         if(S.textQuery && !S.groupByFolder) {
           const next=current.slice(shown,S.limit);
           await Promise.all(next.map(getContent).filter(entry=>entry.loading).map(entry=>entry.promise));
-          if(disposed || searchState!==run || !bodyEl.isConnected) return;
+          if(!canPaint()) return;
           if(next.length) {
             if(!bodyEl._appendCards) bodyEl._appendCards=buildMasonry(bodyEl,[]).append;
             bodyEl._appendCards(next);shown+=next.length;
@@ -1904,7 +2049,7 @@ const render = () => {
         } else if(current.length!==shown || (!S.textQuery && !treeStarted)) {
           renderCards(bodyEl,current,treeStarted && S.groupByFolder);shown=current.length;treeStarted=true;
         }
-        if(disposed || searchState!==run || !bodyEl.isConnected) return;
+        if(!canPaint()) return;
         const pending=!!S.textQuery && !run.ready;
         counter.textContent=pending?'':msg("{0} 件", [current.length]);
         exportButton.disabled=!!S.formulaError || pending || (!!S.textQuery && run.errors.length>0);
@@ -1937,6 +2082,20 @@ const render = () => {
     element.setAttribute(element.hasAttribute('aria-label')?'aria-description':'aria-label',description);
     element.removeAttribute('title');
   }
+  const guidanceProperty=settings.dateProperty;
+  const dateInfo=dateGuidance.read(settings.showDateGuidance!==false && !dateGuidanceShown.has(settings.dateProperty) && (S.dateField==='property' || S.sortField==='property'),settings.dateProperty,getPages,timestampFromFilename);
+  if(dateInfo) setTimeout(()=>{
+    if(disposed || settings.showDateGuidance===false || settings.dateProperty!==guidanceProperty || dateGuidanceShown.has(guidanceProperty) || (S.dateField!=='property' && S.sortField!=='property')) return;
+    if(document.hidden || !root.isConnected || root.clientWidth===0) {pendingRefresh=true;forceRefresh=true;return;}
+    dateGuidanceShown.add(guidanceProperty);
+    dateGuidanceModal=new CreationDateModal(app,guidanceProperty,dateInfo,()=>{
+      settings.showDateGuidance=false;callbacks.onHideDateGuidance?.();
+    },()=>{
+      if(disposed) return;
+      dateMigrationModal?.close();dateMigrationModal=new MigrationModal(app,guidanceProperty);dateMigrationModal.open();
+    });
+    dateGuidanceModal.open();
+  },0);
   persist(takeSaved());
   fitPreviewLabels();
   finishScroll();
@@ -1944,17 +2103,26 @@ const render = () => {
 
 render();
 return {
+  /** @param {SearchIndex|null} index @param {{pause?:boolean}} options */
   setSearchIndex(index,{pause=false}={}) {if(cardSearch.index===index && !pause) return;cardSearch.clear();cardSearch.index=index;if(pause) searchActivated=false;searchState.key=null;forceRefresh=true;refreshLater();},
+  /** @param {import("obsidian").TAbstractFile} [file] */
   refresh(file) { if(file?.path) {forceRefresh=file.path.toLowerCase().endsWith('.md') || forceRefresh;cardSearch.invalidate(file.path);if(searchState.files?.has(file.path)) {cardSearch.cancel();searchState.key=null;}} revision++; pagesCache=null; S.tagCache = null; refreshLater(); },
   refreshSettings() {forceRefresh=true;revision++;pagesCache=null;S.tagCache=null;refreshLater();},
-  dispose() { disposed = true; cardSearch.dispose();observer.disconnect(); for (const cleanup of layouts) cleanup(); layouts.clear(); closePopup(); exportModal?.close(); searchModal?.close(); deleteModal?.close();  dragCleanup?.(); for (const timer of timers) window.clearTimeout(timer); timers.clear(); lifetime.abort(); persist(takeSaved()); container.empty(); },
+  dispose() { disposed = true; cardSearch.dispose();observer.disconnect(); for (const cleanup of layouts) cleanup(); layouts.clear(); closePopup(); exportModal?.close(); searchModal?.close(); deleteModal?.close(); dateGuidanceModal?.close(); dateMigrationModal?.close(); dragCleanup?.(); for (const timer of timers) window.clearTimeout(timer); timers.clear(); lifetime.abort(); releaseTooltips(); persist(takeSaved()); container.empty(); },
 };
 
 }
 
-class DeleteNotesModal extends Modal {
-  constructor(app,targets,mode,apply,onDismiss) {super(app);this.targets=targets;this.mode=mode;this.apply=apply;this.onDismiss=onDismiss;this.components=[];this.offset=0;this.closed=false;this.busy=false;}
+class KeepViewModal extends Modal {
+  tooltipCleanup=()=>{};
+  prepareSurface() {this.contentEl.addClass('keep-view-root');this.tooltipCleanup();this.tooltipCleanup=suppressHoverTooltips(this.modalEl || this.contentEl);}
+}
+
+class DeleteNotesModal extends KeepViewModal {
+  /** @param {import('obsidian').App} app @param {{path:string,file:import('obsidian').TFile}[]} targets @param {string} mode @param {()=>Promise<unknown>} apply @param {()=>void} onDismiss */
+  constructor(app,targets,mode,apply,onDismiss) {super(app);this.targets=targets;this.mode=mode;this.apply=apply;this.onDismiss=onDismiss;this.components=/** @type {Component[]} */ ([]);this.offset=0;this.closed=false;this.busy=false;}
   onOpen() {
+    this.prepareSurface();
     const root=this.contentEl;root.addClass('kv-delete-modal');this.modalEl?.addClass('kv-delete-dialog');
     root.createEl('h2',{text:msg("{0} 件のノートを削除しますか？", [this.targets.length])});
     root.createEl('p',{text:msg("対象のノートをObsidianの削除設定に従って削除します。未確定のタグ編集・フォルダ移動は適用しません。")});
@@ -1995,12 +2163,14 @@ class DeleteNotesModal extends Modal {
     void append();
   }
   close() {if(!this.busy) super.close();}
-  onClose() {this.closed=true;for(const component of this.components) component.unload();this.components=[];this.contentEl.empty();this.onDismiss();}
+  onClose() {this.tooltipCleanup();this.closed=true;for(const component of this.components) component.unload();this.components=[];this.contentEl.empty();this.onDismiss();}
 }
 
-class TextSearchModal extends Modal {
+class TextSearchModal extends KeepViewModal {
+  /** @param {import('obsidian').App} app @param {string} query @param {(value:string)=>void|Promise<void>} apply */
   constructor(app,query,apply) {super(app);this.query=query;this.apply=apply;}
   onOpen() {
+    this.prepareSurface();
     const root=this.contentEl;root.addClass('kv-text-search-modal');
     this.modalEl?.addClass('kv-text-search-dialog');
     root.createEl('h2',{text:msg("全文検索")});
@@ -2010,7 +2180,8 @@ class TextSearchModal extends Modal {
     // Keep actions outside the form: clearing must never also submit its old value.
     const actions=root.createDiv({cls:'kv-modal-actions'});
     let committed=false;
-    const commit=async value=>{if(committed) return;committed=true;try {await this.apply(value);this.close();} catch(error) {committed=false;new Notice(error.message || msg("検索を開けませんでした"));}};
+    /** @param {string} value */
+    const commit=async value=>{if(committed) return;committed=true;try {await this.apply(value);this.close();} catch(error) {committed=false;new Notice(errorMessage(error) || msg("検索を開けませんでした"));}};
     const search=actions.createEl('button',{text:msg("検索")});search.type='button';
     const clear=actions.createEl('button',{text:msg("クリア")});clear.type='button';
     // Do not move focus before the tap completes: a closing mobile keyboard can
@@ -2021,14 +2192,16 @@ class TextSearchModal extends Modal {
     form.onsubmit=event=>{event.preventDefault();commit(input.value.trim());};
     input.focus();input.select();
   }
-  onClose() {this.contentEl.empty();}
+  onClose() {this.tooltipCleanup();this.contentEl.empty();}
 }
 
-class PathExportModal extends Modal {
+class PathExportModal extends KeepViewModal {
+  /** @param {import('obsidian').App} app @param {import('./lib/types').PathExport} payload */
   constructor(app, payload) { super(app); this.payload=payload; }
   onOpen() {
+    this.prepareSurface();
     const root=this.contentEl; root.addClass('kv-export-modal');
-    this.modalEl?.addClass('kv-export-dialog');
+    this.modalEl?.addClass('kv-export-dialog');this.containerEl?.addClass('kv-export-container');
     const heading=root.createEl('h2',{text:msg("検索結果のパス（{0} 件）", [this.payload.count])});heading.tabIndex=0;
     root.createEl('p',{text:msg("未表示分も含む全件です。JSON には Vault 名・検索条件・並び順を含めます。パスは Vault ルートからの相対パスです。")});
     const format=root.createEl('select',{cls:'dropdown kv-export-format'});
@@ -2038,12 +2211,14 @@ class PathExportModal extends Modal {
     const absoluteLabel=root.createEl('label',{cls:'kv-export-absolute'});
     const absolute=absoluteLabel.createEl('input',{type:'checkbox'});
     absoluteLabel.createSpan({text:msg("Vault の絶対パスを含める")});
-    absolute.disabled=typeof this.app.vault.adapter?.getBasePath!=='function';
+    const adapter=this.app.vault.adapter;
+    const getBasePath='getBasePath' in adapter && typeof adapter.getBasePath==='function'?()=>{const value=/** @type {()=>unknown} */ (adapter.getBasePath).call(adapter);return typeof value==='string'?value:null;}:null;
+    absolute.disabled=!getBasePath;
     if(absolute.disabled) root.createEl('p',{cls:'kv-export-note',text:msg("この端末では Vault の絶対パスを取得できません。")});
     const preview=root.createEl('textarea'); preview.readOnly=true;
     preview.setAttribute('aria-label',msg("出力するパス"));
     const update=()=>{
-      preview.value=formatPathExport(this.payload,format.value,absolute.checked?this.app.vault.adapter.getBasePath():null);
+      preview.value=formatPathExport(this.payload,format.value,absolute.checked?getBasePath?.():null);
       preview.scrollTop=0;
     };
     format.onchange=update;
@@ -2060,16 +2235,18 @@ class PathExportModal extends Modal {
       save.disabled=true;
       const filename=`keep-view-paths-${new Date().toISOString().replace(/[:.]/g,'-')}.${format.value}`;
       try { await this.app.vault.create(filename,preview.value+'\n'); new Notice(msg("{0} に保存しました", [filename])); }
-      catch(error) { new Notice(msg("保存できませんでした: {0}", [error.message])); }
+      catch(error) { new Notice(msg("保存できませんでした: {0}", [errorMessage(error)])); }
       finally {save.disabled=false;}
     };
   }
-  onClose() {this.contentEl.ownerDocument.defaultView.clearTimeout(this.previewTimer);this.contentEl.empty();}
+  onClose() {this.tooltipCleanup();this.contentEl.ownerDocument.defaultView.clearTimeout(this.previewTimer);this.contentEl.empty();}
 }
 
-class CacheDeleteModal extends Modal {
+class CacheDeleteModal extends KeepViewModal {
+  /** @param {import('obsidian').App} app @param {()=>Promise<void>} apply */
   constructor(app,apply) {super(app);this.apply=apply;this.busy=false;}
   onOpen() {
+    this.prepareSurface();
     const root=this.contentEl;root.addClass('kv-cache-delete-modal');
     root.createEl('h2',{text:msg('全文検索のキャッシュを削除しますか？')});
     root.createEl('p',{text:msg('ノートや設定は削除されません。次に検索するとキャッシュを作り直します。')});
@@ -2085,12 +2262,42 @@ class CacheDeleteModal extends Modal {
     };
     cancel.focus({preventScroll:true});
   }
-  onClose() {this.contentEl.empty();}
+  onClose() {this.tooltipCleanup();this.contentEl.empty();}
 }
 
-class MigrationModal extends Modal {
+class CreationDateModal extends KeepViewModal {
+  /** @type {HTMLInputElement|null} */ optOut=null;
+  closed=false;
+  /** @param {import('obsidian').App} app @param {string} property @param {{missing:number,invalid:number,importable:number}} summary @param {()=>void} onHide @param {()=>void} onImport */
+  constructor(app,property,summary,onHide,onImport) {super(app);this.property=property;this.summary=summary;this.onHide=onHide;this.onImport=onImport;}
+  onOpen() {
+    this.prepareSurface();
+    const root=this.contentEl;root.addClass('kv-date-guidance-modal');this.modalEl?.addClass('kv-date-guidance-dialog');
+    root.createEl('h2',{text:msg("作成日時について")});
+    root.createEl('p',{text:msg("{0} が未設定・無効のノート: {1} 件",[this.property,this.summary.missing+this.summary.invalid])});
+    root.createEl('p',{text:msg("未設定 {0} 件・空欄または無効 {1} 件（Vault 全体）",[this.summary.missing,this.summary.invalid])});
+    root.createEl('p',{text:msg("作成日時の並び順では末尾に表示し、作成日時の期間指定では除外します。ファイルの作成日時への自動置き換えは行いません。")});
+    root.createEl('p',{text:msg("別のプロパティに日時を保存している場合は、設定の「日時プロパティ」を変更できます。「更新日時」ではファイルの更新日時を使います。")});
+    if(this.summary.importable) root.createEl('p',{text:msg("ファイル名に対応形式の日時がある未設定ノートが {0} 件あります。Google Keep などから移行したノートなら、移行ツールで対象と保存先を確認してから取り込めます。",[this.summary.importable])});
+    if(this.summary.invalid) root.createEl('p',{text:msg("既存プロパティは、空欄や無効な値でも移行ツールでは上書きしません。")});
+    const label=root.createEl('label',{cls:'kv-date-guidance-opt-out'});
+    this.optOut=dropdownCheckbox(label,{label:msg("今後表示しない")});label.createSpan({text:msg("今後表示しない")});
+    const actions=root.createDiv({cls:'kv-modal-actions'});
+    actions.createEl('button',{text:msg("閉じる")}).onclick=()=>this.close();
+    if(this.summary.importable) actions.createEl('button',{text:msg("移行ツールを開く")}).onclick=()=>{this.close();this.onImport();};
+  }
+  onClose() {
+    if(this.closed) return;this.closed=true;
+    const hide=this.optOut?.checked;this.tooltipCleanup();this.contentEl.empty();
+    if(hide) this.onHide();
+  }
+}
+
+class MigrationModal extends KeepViewModal {
+  /** @param {import('obsidian').App} app @param {string} property */
   constructor(app, property) { super(app); this.property=property; this.runId=0; }
   onOpen() {
+    this.prepareSurface();
     const root=this.contentEl; root.addClass('kv-migration-modal');
     root.createEl('h2',{text:msg("Google Keep から日時を取り込む")});
     root.createEl('p',{text:msg("Importer などで Google Keep から Vault に取り込んだ Markdown ノートが対象です。ファイル名に日時が残っている場合に取り込めます。例: 2026-02-09T15_46_51.388+09_00.md。日時を含まない名前や、この形式に一致しないファイルは取り込めません。")});
@@ -2107,14 +2314,17 @@ class MigrationModal extends Modal {
     const status=root.createEl('p');
     const preview=root.createEl('textarea'); preview.readOnly=true;
     preview.setAttribute('aria-label',msg("日時の変換結果"));
-    let plan=null, busy=false;
+    /** @type {{property:string,folder:string,paths:string[]}|null} */ let plan=null;let busy=false;
     const invalidate=()=>{plan=null;apply.disabled=true;status.textContent=msg("条件を変更しました。対象を再確認してください。");};
     property.oninput=invalidate; folder.oninput=invalidate;
+    /** @param {Awaited<ReturnType<typeof migrateCreated>>} report */
     const show=report=>{
+      /** @param {string} key */
       const count=key=>report.rows.filter(row=>row.status===key).length;
       status.textContent=msg("対象 {0} / 書き込み {1} / 既存 {2} / 日時を判別できない {3} / エラー {4}{5}", [count('ready'), count('written'), count('existing'), count('unrecognized'), count('error'), report.cancelled?msg("（中断）"):'']);
       preview.value=JSON.stringify(report,null,2);
     };
+    /** @param {boolean} writing */
     const run=async writing=>{
       if (busy || (writing && !plan)) return;
       busy=true; scan.disabled=true; apply.disabled=true; property.disabled=true; folder.disabled=true;
@@ -2125,24 +2335,33 @@ class MigrationModal extends Modal {
         if (this.runId!==runId) return;
         show(report);
         plan=writing?null:{property:report.property,folder:report.folder,paths:report.rows.filter(row=>row.status==='ready').map(row=>row.path)};
-      } catch(error) {status.textContent=error.message;plan=null;}
+      } catch(error) {status.textContent=errorMessage(error);plan=null;}
       finally {busy=false;scan.disabled=false;property.disabled=false;folder.disabled=false;apply.disabled=!plan?.paths.length;}
     };
     scan.onclick=()=>run(false); apply.onclick=()=>run(true);
   }
-  onClose() {this.runId++;this.contentEl.empty();}
+  onClose() {this.tooltipCleanup();this.runId++;this.contentEl.empty();}
 }
 
 class KeepViewSettings extends PluginSettingTab {
+  /** @param {import("obsidian").App} app @param {KeepViewPlugin} plugin */
   constructor(app, plugin) {super(app,plugin);this.plugin=plugin;}
-  display() {
-    this.containerEl.empty();
-    this.containerEl.classList?.add('kv-settings');
-    this.plugin.syncAppLanguage?.(false);
-    new Setting(this.containerEl).setName(msg('言語')).addDropdown(dropdown=>dropdown
+  /** @type {Setting|null} */ dateInfo=null;
+  dateDescription() {return msg("タイムゾーン（空欄は端末設定）。例: Asia/Tokyo、UTC、America/New_York\n保存先: {0} / {1} / ISO 8601\n保存例: {2}",[this.plugin.settings.dateProperty,this.plugin.settings.creationTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,localIsoTimestamp(new Date(),this.plugin.settings.creationTimeZone || '')]);}
+  redisplay() {
+    if(typeof requireApiVersion==='function') {
+      if(requireApiVersion('1.13.0')) {this.update();return;}
+    }
+    this.display();
+  }
+  /** @returns {SettingRow[]} */
+  getSettingDefinitions() {
+    const updateDateInfo=()=>this.dateInfo?.setDesc(this.dateDescription());
+    return [
+    {name:msg('言語'),render:setting=>{setting.addDropdown(dropdown=>dropdown
       .addOption('en','English').addOption('ja','日本語')
-      .setValue(getLocale()).onChange(value=>{this.plugin.settings.language=value;this.plugin.saveSettings();this.display();}));
-    new Setting(this.containerEl).setName(msg("プレビュー文字数")).addText(text=>{
+      .setValue(getLocale()).onChange(value=>{this.plugin.settings.language=value;this.plugin.saveSettings();this.redisplay();}))}},
+    {name:msg("プレビュー文字数"),render:setting=>{setting.addText(text=>{
       const defaults=DEFAULT_SETTINGS.previewLengths.join(', ');
       const current=(this.plugin.settings.previewLengths||DEFAULT_SETTINGS.previewLengths).join(', ');
       text.setValue(current===defaults?'':current);
@@ -2153,18 +2372,15 @@ class KeepViewSettings extends PluginSettingTab {
         if(!values) {new Notice(msg("1〜10000の整数をカンマで区切って入力してください"));return;}
         this.plugin.settings.previewLengths=values;this.plugin.saveSettings();
       });
-    });
-    new Setting(this.containerEl).setName(msg("プレビュー表示")).addDropdown(dropdown=>dropdown
+    });}},
+    {name:msg("プレビュー表示"),render:setting=>{setting.addDropdown(dropdown=>dropdown
       .addOption('markdown',msg('Markdown')).addOption('source',msg("ソース"))
       .setValue(this.plugin.settings.previewMode)
-      .onChange(value=>{this.plugin.settings.previewMode=value;this.plugin.saveSettings();}));
-    new Setting(this.containerEl).setName(msg("ノート削除時に確認する")).addToggle(toggle=>toggle
+      .onChange(value=>{this.plugin.settings.previewMode=value;this.plugin.saveSettings();}))}},
+    {name:msg("ノート削除時に確認する"),render:setting=>{setting.addToggle(toggle=>toggle
       .setValue(this.plugin.settings.confirmDelete!==false)
-      .onChange(value=>{this.plugin.settings.confirmDelete=value;this.plugin.saveSettings();}));
-    const dateInfo=new Setting(this.containerEl);
-    const updateDateInfo=()=>dateInfo.setName(msg("新規ノートの作成日時")).setDesc(msg("タイムゾーン（空欄は端末設定）。例: Asia/Tokyo、UTC、America/New_York\n保存先: {0} / {1} / ISO 8601\n保存例: {2}", [this.plugin.settings.dateProperty, this.plugin.settings.creationTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone, localIsoTimestamp(new Date(),this.plugin.settings.creationTimeZone || '')]));
-    updateDateInfo();
-    dateInfo.addText(text=>{
+      .onChange(value=>{this.plugin.settings.confirmDelete=value;this.plugin.saveSettings();}))}},
+    {name:msg("新規ノートの作成日時"),desc:this.dateDescription(),render:setting=>{this.dateInfo=setting;setting.addText(text=>{
       text.setValue(this.plugin.settings.creationTimeZone || '');
       text.inputEl.placeholder=msg("端末のタイムゾーン");
       text.inputEl.addEventListener('change',()=>{
@@ -2172,9 +2388,8 @@ class KeepViewSettings extends PluginSettingTab {
         if(!validTimeZone(zone)) {new Notice(msg("有効なタイムゾーン名を入力してください"));text.setValue(this.plugin.settings.creationTimeZone || '');return;}
         this.plugin.settings.creationTimeZone=zone;this.plugin.saveSettings();updateDateInfo();
       });
-    });
-    new Setting(this.containerEl).setName(msg("日時プロパティ")).setDesc(msg("ISO 8601 の日時を読むプロパティ名。空欄は created を使います。日時ボタンで選択すると検索・並び替えに使用します。未設定・無効な日時は末尾に表示し、期間指定では除外します。"))
-      .addText(text=>{
+    });}},
+    {name:msg("日時プロパティ"),desc:msg("ISO 8601 の日時を読むプロパティ名。空欄は created を使います。日時ボタンで選択すると検索・並び替えに使用します。未設定・無効な日時は末尾に表示し、期間指定では除外します。"),render:setting=>{setting.addText(text=>{
         text.setValue(this.plugin.settings.dateProperty===DEFAULT_SETTINGS.dateProperty?'':this.plugin.settings.dateProperty);
         text.inputEl.placeholder=DEFAULT_SETTINGS.dateProperty;
         text.inputEl.addEventListener('change',()=>{
@@ -2182,17 +2397,29 @@ class KeepViewSettings extends PluginSettingTab {
           if (!validatePropertyName(property)) {new Notice(msg("有効なプロパティ名を指定してください"));text.setValue(this.plugin.settings.dateProperty===DEFAULT_SETTINGS.dateProperty?'':this.plugin.settings.dateProperty);return;}
           this.plugin.settings.dateProperty=property;this.plugin.saveSettings();updateDateInfo();
         });
-      });
-    new Setting(this.containerEl).setName(msg("高速全文検索")).setDesc(msg("ノート本文を圧縮して検索キャッシュに保存します。暗号化はされません。"))
-      .addToggle(toggle=>toggle.setValue(this.plugin.settings.fastSearch!==false)
-        .onChange(value=>{this.plugin.settings.fastSearch=value;this.plugin.saveSettings();}));
-    new Setting(this.containerEl).setName(msg("検索キャッシュ")).addButton(button=>button.setButtonText(msg("削除する")).onClick(()=>this.plugin.confirmClearSearchCache()));
-    new Setting(this.containerEl).setName(msg("Google Keep から日時を取り込む")).setDesc(msg("Importer などで Vault に取り込んだ Markdown ノートのファイル名から日時を取り込みます。対象フォルダと変換内容を確認してから適用できます。"))
-      .addButton(button=>button.setButtonText(msg("移行ツールを開く")).onClick(()=>this.plugin.openMigration()));
+      });}},
+    {name:msg("作成日時の案内"),desc:msg("日時プロパティが未設定・無効のとき、起動中に一度だけ案内します。オフにすると、案内用の追加確認も省きます。移行ツールは引き続き手動で開けます。"),render:setting=>{setting.addToggle(toggle=>toggle.setValue(this.plugin.settings.showDateGuidance!==false).onChange(value=>{this.plugin.settings.showDateGuidance=value;if(value) this.plugin.dateGuidanceShown?.clear();this.plugin.saveSettings();}));}},
+    {name:msg("高速全文検索"),desc:msg("ノート本文を圧縮して検索キャッシュに保存します。暗号化はされません。"),render:setting=>{setting.addToggle(toggle=>toggle.setValue(this.plugin.settings.fastSearch!==false)
+        .onChange(value=>{this.plugin.settings.fastSearch=value;this.plugin.saveSettings();}))}},
+    {name:msg("検索キャッシュ"),render:setting=>{setting.addButton(button=>button.setButtonText(msg("削除する")).onClick(()=>this.plugin.confirmClearSearchCache()))}},
+    {name:msg("Google Keep から日時を取り込む"),desc:msg("Importer などで Vault に取り込んだ Markdown ノートのファイル名から日時を取り込みます。対象フォルダと変換内容を確認してから適用できます。"),render:setting=>{setting.addButton(button=>button.setButtonText(msg("移行ツールを開く")).onClick(()=>this.plugin.openMigration()))}},
+    ];
+  }
+  display() {
+    this.containerEl.empty();this.containerEl.classList?.add('kv-settings');
+    this.plugin.syncAppLanguage?.(false);
+    for(const definition of this.getSettingDefinitions()) {
+      const setting=new Setting(this.containerEl).setName(definition.name);
+      if(definition.desc) setting.setDesc(definition.desc);
+      definition.render(setting,null);
+    }
   }
 }
 
 class KeepView extends ItemView {
+  /** @type {ReturnType<typeof mountKeepView>|null} */
+  controller=null;
+  /** @param {import("obsidian").WorkspaceLeaf} leaf @param {KeepViewPlugin} plugin */
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return msg('Keep View'); }
@@ -2201,22 +2428,41 @@ class KeepView extends ItemView {
     this.contentEl.empty();
     this.contentEl.addClass('keep-view-content');
     const root = this.contentEl.createDiv();
-    this.controller = mountKeepView(this.app, root, this.plugin.saved, state => this.plugin.saveState(state), this.plugin.settings, this.plugin.getSearchIndex());
+    this.controller = mountKeepView(this.app, root, this.plugin.saved, state => this.plugin.saveState(state), this.plugin.settings, this.plugin.getSearchIndex(),{onHideDateGuidance:()=>this.plugin.saveSettings(),dateGuidanceShown:this.plugin.dateGuidanceShown});
     const refresh = () => this.controller?.refresh();
     this.registerEvent(this.app.metadataCache.on('changed', refresh));
     this.registerEvent(this.app.metadataCache.on('resolved', refresh));
-    for (const event of ['create','delete','rename','modify']) this.registerEvent(this.app.vault.on(event, file=>this.controller?.refresh(file)));
+    this.registerEvent(this.app.vault.on('create', file=>this.controller?.refresh(file)));
+    this.registerEvent(this.app.vault.on('delete', file=>this.controller?.refresh(file)));
+    this.registerEvent(this.app.vault.on('modify', file=>this.controller?.refresh(file)));
+    this.registerEvent(this.app.vault.on('rename',file=>this.controller?.refresh(file)));
   }
   async onClose() { this.controller?.dispose(); this.controller = null; }
 }
 
-module.exports = class KeepViewPlugin extends Plugin {
+class KeepViewPlugin extends Plugin {
+  /** @type {Set<string>} */ dateGuidanceShown=new Set();
+  /** @type {Partial<SavedState>} */
+  saved={};
+  /** @type {import('./lib/types').Settings} */
+  settings={...DEFAULT_SETTINGS};
+  /** @type {SearchIndex|null} */
+  searchIndex=null;
+  /** @type {KeepViewSettings|null} */
+  settingsTab=null;
+  /** @type {MigrationModal|null} */
+  migrationModal=null;
+  /** @type {CacheDeleteModal|null} */
+  cacheDeleteModal=null;
+  /** @type {string|null} */
+  lastSaved=null;
+  saveQueue=Promise.resolve();
   async onload() {
     addIcon(KEEP_VIEW_ICON, KEEP_VIEW_ICON_SVG);
     addIcon(TREE_ICON,TREE_ICON_SVG);
-    const data = await this.loadData();
-    this.saved = data?.state || {};
-    this.settings = {...DEFAULT_SETTINGS,...data?.settings};
+    const data = record(await this.loadData());
+    this.saved = readState(data.state);
+    this.settings = readSettings(data.settings,DEFAULT_SETTINGS);
     if(!['auto','en','ja'].includes(this.settings.language)) this.settings.language='auto';
     const appLanguage=getLanguage?.() || 'en';
     if(this.settings.obsidianLanguage && this.settings.obsidianLanguage!==appLanguage) this.settings.language='auto';
@@ -2251,11 +2497,12 @@ module.exports = class KeepViewPlugin extends Plugin {
     this.saveSettings();
     if(refreshTab && this.settingsTab?.containerEl?.isConnected) this.settingsTab.display();
   }
+  /** @param {SavedState} state */
   saveState(state) {
     const serialized = JSON.stringify(state);
     if (serialized === this.lastSaved) return;
     this.lastSaved = serialized;
-    this.saved = JSON.parse(serialized);
+    this.saved = clone(state);
     this.queueSave();
   }
   getSearchIndex() {
@@ -2263,27 +2510,27 @@ module.exports = class KeepViewPlugin extends Plugin {
     if(!this.searchIndex) {
       const directory=this.manifest.dir || `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
       this.searchIndex=new SearchIndex(this.app,`${directory}/search-cache-v1`);
-      for(const event of ['create','modify','delete','rename']) this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{
-        this.searchIndex.invalidate(file.path);
-        if(oldPath) this.searchIndex.invalidate(oldPath);
-      }));
+      this.registerEvent(this.app.vault.on('create',file=>this.searchIndex.invalidate(file.path)));
+      this.registerEvent(this.app.vault.on('modify',file=>this.searchIndex.invalidate(file.path)));
+      this.registerEvent(this.app.vault.on('delete',file=>this.searchIndex.invalidate(file.path)));
+      this.registerEvent(this.app.vault.on('rename',(file,oldPath)=>{this.searchIndex.invalidate(file.path);this.searchIndex.invalidate(oldPath);}));
     }
     return this.searchIndex;
   }
   queueSave() {
-    const snapshot=JSON.parse(JSON.stringify({state:this.saved,settings:this.settings}));
+    const snapshot=clone({state:this.saved,settings:this.settings});
     this.saveQueue=this.saveQueue.then(()=>this.saveData(snapshot)).catch(error=>{this.lastSaved=null;console.error('Keep View Explorer: save failed',error);new Notice(msg("Keep View の設定を保存できませんでした"));});
   }
   saveSettings() {
     setLanguage(this.settings.language==='auto'?(getLanguage?.() || 'en'):this.settings.language || getLanguage?.() || 'en');
     this.queueSave();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-      leaf.view.controller?.setSearchIndex(this.getSearchIndex());
-      leaf.view.controller?.refreshSettings();
+      (leaf.view instanceof KeepView?leaf.view.controller:null)?.setSearchIndex(this.getSearchIndex());
+      (leaf.view instanceof KeepView?leaf.view.controller:null)?.refreshSettings();
     }
   }
   async clearSearchCache() {
-    const controllers=this.app.workspace.getLeavesOfType(VIEW_TYPE).map(leaf=>leaf.view.controller).filter(Boolean);
+    const controllers=this.app.workspace.getLeavesOfType(VIEW_TYPE).map(leaf=>(leaf.view instanceof KeepView?leaf.view.controller:null)).filter(Boolean);
     for(const controller of controllers) controller.setSearchIndex(null,{pause:true});
     const directory=this.manifest.dir || `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
     const index=this.searchIndex || new SearchIndex(this.app,`${directory}/search-cache-v1`);
@@ -2302,4 +2549,5 @@ module.exports = class KeepViewPlugin extends Plugin {
     await this.app.workspace.revealLeaf(leaf);
   }
   onunload() { this.migrationModal?.close();this.cacheDeleteModal?.close(); }
-};
+}
+module.exports = KeepViewPlugin;

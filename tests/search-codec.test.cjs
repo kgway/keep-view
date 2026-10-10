@@ -25,7 +25,7 @@ test('Unicode dictionary is used when smaller; ASCII does not pay its overhead',
 test('legacy payload is readable and marked for in-place conversion',async()=>{
   const entries=[['n.md',{mtime:1,size:5,text:'hello',bits:[1,2,3]}]];
   const legacy=gzipSync(strToU8(JSON.stringify({version:1,entries})),{level:6});
-  assert.deepEqual(await decodeBucket(legacy),{entries,legacy:true});
+  assert.deepEqual(await decodeBucket(legacy),{entries:[['n.md',{mtime:1,size:5,text:'hello'}]],legacy:true});
 });
 
 test('standard decompression reads 1.27 fflate payloads and verifies their gzip checksum',async()=>{

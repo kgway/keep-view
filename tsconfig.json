@@ -1,12 +1,14 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "checkJs": false,
+    "checkJs": true,
+    "strictBindCallApply": true,
+    "resolveJsonModule": true,
     "noEmit": true,
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true
   },
   "include": ["main.js", "lib/**/*.js"],

@@ -63,13 +63,14 @@ test('language defaults follow the app and saved choices follow later host chang
 test('language changes persist across reloads and refresh open views only when the host changes',async()=>{
   let appLanguage='ja',data=null,saves=0,refreshes=0,tabRefreshes=0;
   class Plugin {
-    constructor(){this.app={workspace:{getLeavesOfType:()=>[{view:{controller:{setSearchIndex(){},refreshSettings(){refreshes++;}}}}]}};}
+    constructor(){this.app={workspace:{getLeavesOfType:()=>[{view:Object.assign(Object.create(context.module.exports.ViewForTest.prototype),{controller:{setSearchIndex(){},refreshSettings(){refreshes++;}}})}]}};}
     async loadData(){return data;}
     async saveData(value){data=value;saves++;}
     registerView(){} addRibbonIcon(){} addCommand(){} addSettingTab(){}
   }
   const context={module:{exports:{}},require:()=>({Plugin,ItemView:class{},Modal:class{},PluginSettingTab:class{},addIcon(){},getLanguage:()=>appLanguage}),console};
   vm.runInNewContext(source,installModules(context));
+  vm.runInNewContext('module.exports.ViewForTest=KeepView;',context);
   const locale=()=>context.require('./lib/i18n').getLocale();
   let plugin=new context.module.exports();await plugin.onload();await plugin.saveQueue;
   assert.equal(locale(),'ja');assert.equal(data.settings.obsidianLanguage,'ja');
@@ -119,12 +120,16 @@ test('settings use blank defaults, two language choices, toggles and the request
   vm.runInNewContext(source+'\nmodule.exports=KeepViewSettings;',installModules(context));
   const settings={dateProperty:'imported',previewLengths:[90],previewMode:'source',creationTimeZone:'UTC'};
   let saves=0;const tab=new context.module.exports({}, {settings,saveSettings(){saves++;}});
+  const definitions=tab.getSettingDefinitions();
+  assert.equal(rows.length,0,'Indexing settings does not render controls');
+  assert.equal(definitions.length,10);assert.equal(new Set(definitions.map(item=>item.name)).size,10);
+  assert.ok(definitions.every(item=>typeof item.name==='string' && typeof item.render==='function'));
   tab.containerEl={empty(){rows.length=0;}};tab.display();
   const row=name=>rows.find(item=>item.name===name);
   assert.match(row('新規ノートの作成日時').desc,/保存先: imported/);
   assert.match(row('新規ノートの作成日時').desc,/[+-]\d{2}:\d{2}/);
   assert.deepEqual(Array.from(row('言語').dropdown.options),['en','ja']);
-  assert.deepEqual(rows.map(item=>item.name),['言語','プレビュー文字数','プレビュー表示','ノート削除時に確認する','新規ノートの作成日時','日時プロパティ','高速全文検索','検索キャッシュ','Google Keep から日時を取り込む']);
+  assert.deepEqual(rows.map(item=>item.name),['言語','プレビュー文字数','プレビュー表示','ノート削除時に確認する','新規ノートの作成日時','日時プロパティ','作成日時の案内','高速全文検索','検索キャッシュ','Google Keep から日時を取り込む']);
   for(const name of ['プレビュー文字数','新規ノートの作成日時','日時プロパティ']) assert.equal(row(name).buttons.length,0);
   row('プレビュー文字数').text.change(' ');
   assert.deepEqual(Array.from(settings.previewLengths),[50,100,150,200,400]);
@@ -152,6 +157,29 @@ test('settings use blank defaults, two language choices, toggles and the request
   row('プレビュー文字数').text.change('300, 75, 75');assert.deepEqual(Array.from(settings.previewLengths),[75,300]);
   row('日時プロパティ').text.change('imported');assert.equal(settings.dateProperty,'imported');
   row('新規ノートの作成日時').text.change('Asia/Tokyo');assert.equal(settings.creationTimeZone,'Asia/Tokyo');
+  assert.equal(row('作成日時の案内').toggle.value,true);
+  row('作成日時の案内').toggle.change(false);assert.equal(settings.showDateGuidance,false);
+  row('作成日時の案内').toggle.change(true);assert.equal(settings.showDateGuidance,true);
+});
+
+test('settings refresh uses the declarative host API only on supported versions',()=>{
+  let supported=false,updates=0,fallbacks=0;
+  class PluginSettingTab {update(){updates++;}}
+  const context={module:{exports:{}},require:()=>({Plugin:class{},ItemView:class{},Modal:class{},PluginSettingTab,requireApiVersion:()=>supported}),console};
+  vm.runInNewContext(source+'\nmodule.exports=KeepViewSettings;',installModules(context));
+  const tab=new context.module.exports({},{});tab.display=()=>fallbacks++;
+  tab.redisplay();assert.equal(fallbacks,1);assert.equal(updates,0);
+  supported=true;tab.redisplay();assert.equal(fallbacks,1);assert.equal(updates,1);
+});
+
+test('standalone migration helpers handle write errors without plugin module globals',async()=>{
+  const helpers=source.split('// BEGIN MIGRATION HELPERS')[1].split('\n').slice(1).join('\n').split('// END MIGRATION HELPERS')[0];
+  const context={module:{exports:{}},msg:key=>key};
+  vm.runInNewContext(helpers+'\nmodule.exports=migrateCreated;',context);
+  const file={path:'Notes/2026-01-01T12_00_00Z.md',basename:'2026-01-01T12_00_00Z'};
+  const app={vault:{getMarkdownFiles:()=>[file]},metadataCache:{getFileCache:()=>({})},fileManager:{processFrontMatter:async()=>{throw Error('write failed');}}};
+  const result=await context.module.exports(app,{apply:true});
+  assert.equal(result.rows[0].status,'error');assert.match(result.rows[0].error,/write failed/);
 });
 test('new note respects selected folder, avoids overwrites and writes creation property',async()=>{
   const {createNote}=sandbox.module.exports;
@@ -346,11 +374,12 @@ test('fast search can be disabled without loading storage, and cache deletion pa
   const context={module:{exports:{}},require:()=>({Plugin:class{},ItemView:class{},Modal:class{},PluginSettingTab:class{}}),Date,console,CompressionStream,DecompressionStream};
   vm.runInNewContext(source,installModules(context));
   const plugin=new context.module.exports();plugin.settings={fastSearch:false};plugin.manifest={dir:'plugins/keep-view'};
+  vm.runInNewContext('module.exports.ViewForTest=KeepView;',context);
   const changes=[],events=[],disk=new Map();
   const controllers=[0,1].map(id=>({setSearchIndex(index,options){changes.push({id,index,options});}}));
-  plugin.app={vault:{on:(event,callback)=>{events.push(event);return callback;},adapter:{exists:async path=>disk.has(path),remove:async path=>disk.delete(path)}},workspace:{getLeavesOfType:()=>controllers.map(controller=>({view:{controller}}))}};
+  plugin.app={vault:{on:(event,callback)=>{events.push(event);return callback;},adapter:{exists:async path=>disk.has(path),remove:async path=>disk.delete(path)}},workspace:{getLeavesOfType:()=>controllers.map(controller=>({view:Object.assign(Object.create(context.module.exports.ViewForTest.prototype),{controller})}))}};
   plugin.registerEvent=()=>{};
-  assert.equal(plugin.getSearchIndex(),null);assert.equal(plugin.searchIndex,undefined);assert.equal(events.length,0);
+  assert.equal(plugin.getSearchIndex(),null);assert.equal(plugin.searchIndex,null);assert.equal(events.length,0);
   plugin.settings.fastSearch=true;const index=plugin.getSearchIndex();assert.ok(index);assert.equal(events.length,4);
   disk.set('plugins/keep-view/search-cache-v1/2.gz',new Uint8Array());disk.set('plugins/keep-view/data.json','keep');
   await plugin.clearSearchCache();
