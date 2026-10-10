@@ -39,7 +39,9 @@ VaultにあるMarkdownノートから始めます。デモでは `#project` を�
 
 ## インストール
 
-Obsidian 1.8.7 以降が必要です。コミュニティプラグインとしての登録は申請前です。
+Obsidian 1.8.7 以降が必要です。[Community directoryの紹介ページ](https://community.obsidian.md/plugins/keep-view)、または **設定 → コミュニティプラグイン → 閲覧** から **Keep View Explorer** を探してインストールし、有効にしてください。初回掲載のアプリ内検索への反映には最大24時間かかる場合があります。
+
+手動でインストールする場合：
 
 1. リリースの `main.js`、`manifest.json`、`styles.css` を Vault の `.obsidian/plugins/keep-view/` に配置します。ZIP の場合は中の `keep-view` フォルダを配置します。
 2. Obsidian の設定でコミュニティプラグインを有効にし、Keep View Explorer を有効にします。
