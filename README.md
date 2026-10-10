@@ -41,7 +41,7 @@ Your notes remain ordinary Markdown files. English and Japanese interfaces; desk
 
 ## Installation
 
-Requires **Obsidian 1.8.7 or later**. Keep View Explorer is being prepared for community submission and is not yet listed in the community directory.
+Requires **Obsidian 1.8.7 or later**. Install [Keep View Explorer from the community directory](https://community.obsidian.md/plugins/keep-view), or open **Settings → Community plugins → Browse** and search for **Keep View Explorer**. Enable the plugin after installation. New listings can take up to 24 hours to appear in the app search.
 
 For manual installation, use the built release assets:
 
