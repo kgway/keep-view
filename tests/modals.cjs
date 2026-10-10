@@ -1,3 +1,4 @@
+const {compileSource}=require('./compile-source.cjs');
 const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
@@ -6,9 +7,9 @@ const root=path.resolve(__dirname,'..');
 const host=process.env.KEEP_VIEW_HOST_CSS||path.join(root,'.artifacts/host-css/obsidian.css');
 const theme=process.env.KEEP_VIEW_THEME_CSS||path.join(root,'.artifacts/host-css/minimal.css');
 const sources=Object.fromEntries(fs.readdirSync(path.join(root,'lib')).filter(name=>/\.(js|json)$/.test(name)).map(name=>[
-  './lib/'+(name.endsWith('.json')?name:name.slice(0,-3)),name.endsWith('.json')?'module.exports='+fs.readFileSync(path.join(root,'lib',name),'utf8'):fs.readFileSync(path.join(root,'lib',name),'utf8')
+  './lib/'+(name.endsWith('.json')?name:name.slice(0,-3)),name.endsWith('.json')?'module.exports='+fs.readFileSync(path.join(root,'lib',name),'utf8'):compileSource(fs.readFileSync(path.join(root,'lib',name),'utf8'))
 ]));
-sources.main=fs.readFileSync(path.join(root,'main.js'),'utf8')+'\nmodule.exports={TextSearchModal,PathExportModal,KeepViewSettings,CreationDateModal,DEFAULT_SETTINGS};';
+sources.main=compileSource(fs.readFileSync(path.join(root,'main.js'),'utf8'))+'\nmodule.exports={TextSearchModal,PathExportModal,KeepViewSettings,CreationDateModal,DEFAULT_SETTINGS};';
 const screenshots=path.join(root,'.artifacts/ui');
 fs.mkdirSync(screenshots,{recursive:true});
 (async()=>{
@@ -40,10 +41,10 @@ fs.mkdirSync(screenshots,{recursive:true});
           addButton(callback){const button=this.controlEl.createEl('button');callback({setButtonText(value){button.textContent=value;return this;},onClick(fn){button.onclick=fn;return this;}});return this;}
         }
         const cache=new Map();
-        window.require=id=>{
+        window.require=id=>{id=id.replace(/\.js$/,'');
           if(id==='obsidian')return {Plugin:class{},ItemView:class{},PluginSettingTab:class{},Modal,Setting,Notice:class{}};
           if(id.startsWith('./')&&!id.startsWith('./lib/'))id='./lib/'+id.slice(2);
-          if(!cache.has(id)){const module={exports:{}};cache.set(id,module);new Function('require','module',sources[id])(window.require,module);}
+          if(!cache.has(id)){const module={exports:{}};cache.set(id,module);new Function('require','module','exports',sources[id])(window.require,module,module.exports);}
           return cache.get(id).exports;
         };
         require('./lib/i18n').setLanguage('ja');

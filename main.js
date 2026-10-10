@@ -1,15 +1,14 @@
-'use strict';
-const {t:msg,setLanguage,getLocale} = require('./lib/i18n');
-const {Plugin, ItemView, Modal, Notice, PluginSettingTab, Setting, getAllTags, getLanguage, setIcon, addIcon, MarkdownRenderer, Component, requireApiVersion} = require('obsidian');
-const {CardSearch,normalizeSearch} = require('./lib/card-search');
-const {formatPathExport} = require('./lib/path-export');
-const {SearchIndex} = require('./lib/search-index');
-const {noteTags,restoreTagChanges,editNoteTags,moveSelection,trashSelectedNotes,validTimeZone,localIsoTimestamp,createNote} = require('./lib/note-operations');
-const {openNoteInForeground} = require('./lib/note-opening');
-const {iconButton,folderDropdownRow,dropdownCheckbox,disclosureIcon,animateDisclosure,suppressHoverTooltips} = require('./lib/ui');
-const {record,isFile,isFolder,clone,errorMessage,dictionary} = require('./lib/value-guards');
-const {readState,readSettings} = require('./lib/saved-data');
-const {DateGuidance} = require('./lib/date-guidance');
+import {t as msg,setLanguage,getLocale} from "./lib/i18n.js";
+import {Plugin, ItemView, Modal, Notice, PluginSettingTab, Setting, getAllTags, getLanguage, setIcon, addIcon, MarkdownRenderer, Component, requireApiVersion} from "obsidian";
+import {CardSearch,normalizeSearch} from "./lib/card-search.js";
+import {formatPathExport} from "./lib/path-export.js";
+import {SearchIndex} from "./lib/search-index.js";
+import {noteTags,restoreTagChanges,editNoteTags,moveSelection,trashSelectedNotes,validTimeZone,localIsoTimestamp,createNote} from "./lib/note-operations.js";
+import {openNoteInForeground} from "./lib/note-opening.js";
+import {iconButton,folderDropdownRow,dropdownCheckbox,disclosureIcon,animateDisclosure,suppressHoverTooltips} from "./lib/ui.js";
+import {record,isFile,isFolder,clone,errorMessage,dictionary} from "./lib/value-guards.js";
+import {readState,readSettings} from "./lib/saved-data.js";
+import {DateGuidance} from "./lib/date-guidance.js";
 /** @typedef {import('./lib/types').TagNode} TagNode */
 /** @typedef {import('./lib/types').Page} Page */
 /** @typedef {import('./lib/types').SavedState} SavedState */
@@ -431,8 +430,8 @@ const S = {
     searchTree      : { type: 'and', id: 'root', children: [] },
     formula         : '',
     formulaError    : '',
-    dateField       : 'property',
-    sortField       : 'property', // 'property'|'mtime'|'name'
+    dateField       : 'mtime',
+    sortField       : 'mtime', // 'property'|'mtime'|'name'
     sortOrder       : 'desc',
     dateFrom        : '',
     dateTo          : '',
@@ -457,8 +456,8 @@ Object.assign(S, readState(saved));
 if(typeof S.textQuery!=='string') S.textQuery='';
 S.textQuery=S.textQuery.trim();
 if(S.previewChars===120 && !settings.previewLengths?.includes(120)) S.previewChars=150;
-if (!['property','mtime'].includes(S.dateField)) S.dateField='property';
-if (!['property','mtime','name'].includes(S.sortField)) S.sortField='property';
+if (!['property','mtime'].includes(S.dateField)) S.dateField='mtime';
+if (!['property','mtime','name'].includes(S.sortField)) S.sortField='mtime';
 if (!Array.isArray(S.folderFilters)) S.folderFilters = [];
 if (!S.searchTree || !S.searchTree.type) S.searchTree = { type:'and', id:'root', children:[] };
 if (!S.searchTree.id) S.searchTree.id = 'root';
@@ -1101,7 +1100,7 @@ const registerZone = (lineEl, parentId, index, isRootLevel=false) => {
 let _activeLine = null;
 const clearHighlight = () => { if(_activeLine){_activeLine.classList.remove('is-visible');_activeLine=null;} };
 
-/** @param {number} clientY */
+/** @param {number} clientY @returns {DropZone|null} */
 const getNearestZone = (clientY) => {
   /** @type {DropZone|null} */ let best=null;let bestDist=Infinity;
   _zones.forEach(z=>{
@@ -1293,9 +1292,13 @@ const getColCount = (width = container.clientWidth) => {
 
 // Cards observe their own available width. Rebuilding the header here would
 // destroy a focused dropdown during viewport/keyboard transitions.
+/** @type {CanvasRenderingContext2D|null|undefined} */
+let previewMeasureContext;
 const fitPreviewLabels=()=>{
+  previewMeasureContext??=window.createEl('canvas').getContext('2d');
+  if(!previewMeasureContext) return;
   for(const select of /** @type {NodeListOf<HTMLSelectElement>} */ (container.querySelectorAll('.kv-preview-select'))) {
-    const style=window.getComputedStyle(select),context=document.createElement('canvas').getContext('2d');
+    const style=window.getComputedStyle(select),context=previewMeasureContext;
     context.font='12px '+style.fontFamily;
     const available=select.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);
     const required=context.measureText(select.selectedOptions[0].textContent).width;
@@ -1514,6 +1517,8 @@ const buildMasonry = (container, pages) => {
   append(pages);updateSelection();return {append};
 };
 
+/** @param {Page} page @param {string} field */
+const dateValue = (page,field) => field==='mtime'?page.file.mtime:(page.file.property??page.file.ctime);
 /** @param {Page[]} arr */
 const sortArr = (arr) => {
   const dir = S.sortOrder==='asc' ? 1 : -1;
@@ -1521,8 +1526,7 @@ const sortArr = (arr) => {
     return [...arr].sort((a,b) => dir * a.file.name.localeCompare(b.file.name, undefined, {sensitivity:'base'}));
   }
   return [...arr].sort((a,b) => {
-    const first=S.sortField==='mtime'?a.file.mtime:a.file.property, second=S.sortField==='mtime'?b.file.mtime:b.file.property;
-    if (first==null || second==null) return first==null && second==null ? a.file.path.localeCompare(b.file.path) : first==null ? 1 : -1;
+    const first=dateValue(a,S.sortField), second=dateValue(b,S.sortField);
     return dir*(toMs(first)-toMs(second)) || a.file.path.localeCompare(b.file.path);
   });
 };
@@ -1534,7 +1538,7 @@ const candidatePages = () => {
   if (S.dateFrom || S.dateTo) {
     const from = S.dateFrom ? new Date(S.dateFrom+'T00:00:00').getTime() : -Infinity;
     const to = S.dateTo ? new Date(S.dateTo+'T23:59:59.999').getTime() : Infinity;
-    pages = pages.filter(p=>p.file[S.dateField]!=null && p.file[S.dateField]>=from && p.file[S.dateField]<=to);
+    pages = pages.filter(p=>{const date=dateValue(p,S.dateField);return date>=from && date<=to;});
   }
   if (S.noTagOnly) pages = pages.filter(p=>!p.file.tags.length);
   return pages;
@@ -2006,7 +2010,7 @@ const render = () => {
   exportButton.disabled = !!S.formulaError || searching || (!!S.textQuery && searchState.errors.length>0);
   if (S.dateField==='property' || S.sortField==='property') {
     const missing = getPages().filter(page=>page.file.property===null).length;
-    counter.title = msg("{0}: Vault 全体で {1} 件が未設定または無効。並び替えでは末尾、期間指定では除外。", [settings.dateProperty, missing]);
+    counter.title = msg("{0}: Vault 全体で {1} 件が未設定または無効。並び替えと期間指定にはファイル作成日時を使います。", [settings.dateProperty, missing]);
   }
   /** @type {HTMLElement|null} */ let status=null;
   if(searching) {
@@ -2276,7 +2280,7 @@ class CreationDateModal extends KeepViewModal {
     root.createEl('h2',{text:msg("作成日時について")});
     root.createEl('p',{text:msg("{0} が未設定・無効のノート: {1} 件",[this.property,this.summary.missing+this.summary.invalid])});
     root.createEl('p',{text:msg("未設定 {0} 件・空欄または無効 {1} 件（Vault 全体）",[this.summary.missing,this.summary.invalid])});
-    root.createEl('p',{text:msg("作成日時の並び順では末尾に表示し、作成日時の期間指定では除外します。ファイルの作成日時への自動置き換えは行いません。")});
+    root.createEl('p',{text:msg("未設定・無効のノートはファイルの作成日時を使い、ほかのノートと混ぜて並べ、期間指定にも含めます。プロパティの書き換えは行いません。")});
     root.createEl('p',{text:msg("別のプロパティに日時を保存している場合は、設定の「日時プロパティ」を変更できます。「更新日時」ではファイルの更新日時を使います。")});
     if(this.summary.importable) root.createEl('p',{text:msg("ファイル名に対応形式の日時がある未設定ノートが {0} 件あります。Google Keep などから移行したノートなら、移行ツールで対象と保存先を確認してから取り込めます。",[this.summary.importable])});
     if(this.summary.invalid) root.createEl('p',{text:msg("既存プロパティは、空欄や無効な値でも移行ツールでは上書きしません。")});
@@ -2389,7 +2393,7 @@ class KeepViewSettings extends PluginSettingTab {
         this.plugin.settings.creationTimeZone=zone;this.plugin.saveSettings();updateDateInfo();
       });
     });}},
-    {name:msg("日時プロパティ"),desc:msg("ISO 8601 の日時を読むプロパティ名。空欄は created を使います。日時ボタンで選択すると検索・並び替えに使用します。未設定・無効な日時は末尾に表示し、期間指定では除外します。"),render:setting=>{setting.addText(text=>{
+    {name:msg("日時プロパティ"),desc:msg("ISO 8601 の日時を読むプロパティ名。空欄は created を使います。作成日時の検索・並び替えに使用します。未設定・無効はファイル作成日時でほかのノートと混ぜて並べ、期間指定にも含めます。"),render:setting=>{setting.addText(text=>{
         text.setValue(this.plugin.settings.dateProperty===DEFAULT_SETTINGS.dateProperty?'':this.plugin.settings.dateProperty);
         text.inputEl.placeholder=DEFAULT_SETTINGS.dateProperty;
         text.inputEl.addEventListener('change',()=>{
@@ -2550,4 +2554,4 @@ class KeepViewPlugin extends Plugin {
   }
   onunload() { this.migrationModal?.close();this.cacheDeleteModal?.close(); }
 }
-module.exports = KeepViewPlugin;
+export default KeepViewPlugin;

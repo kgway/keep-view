@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.43.8 — creation date ranges
+
+- Include notes with missing or invalid creation properties in date ranges using file creation time, matching the sorting behavior.
+
+## 1.43.7 — date sorting defaults
+
+- Start new views with the newest modified notes; retain saved sorting choices.
+- Use file creation time for missing or invalid creation properties and sort these notes together with other notes.
+- Update the introduction to describe the Google Keep-style card view, Boolean tag queries, filters and bulk actions.
+
+## 1.43.6 — restore the full view area
+
+- Override default ItemView padding within Keep View so the toolbar and cards retain their available space.
+- Cover the host view structure and stylesheet reload order in layout regression checks.
+
+## 1.43.5 — source and style cleanup
+
+- Use ES Module imports in the source while retaining a self-contained CommonJS install file.
+- Give tag-tree drag targets an explicit return type.
+- Replace stylesheet `!important` declarations with scoped selectors and use equivalent grid gap declarations.
+- Reuse a detached canvas for preview label measurements through Obsidian's DOM helper.
+
 ## 1.43.4 — creation date guidance
 
 - Explain missing or invalid creation dates in a dialog once per app session, with a preview-first shortcut for notes whose filenames contain supported timestamps.

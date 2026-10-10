@@ -1,6 +1,6 @@
 # Keep View Explorer
 
-Browse your Markdown notes as cards. Narrow them down with tags and search, then select what you want to organize.
+Browse, filter, and manage notes in a Google Keep-style card view. Use Boolean tag queries, folder and date filters, full-text search, and bulk actions.
 
 ![One workflow: 24 notes → project tags → exclude writing → search garden → select the two matches.](docs/media/demo-en.gif)
 
@@ -56,7 +56,7 @@ When updating manually, disable the plugin, replace these three files, then enab
 
 Use the toolbar to combine tags, folders, date ranges and full-text search. For example, `#work AND NOT #done AND (#important OR #urgent)` matches work notes that are unfinished and important or urgent. Full-text search starts only when requested; it does not scan the vault at startup.
 
-Creation dates come from a frontmatter property, `created` by default. Missing or invalid creation dates sort last and are excluded from date ranges. Modification dates use file modification time. Date ranges use the device timezone.
+New views start with modification time, newest first. Saved sorting choices are retained. Creation dates come from a frontmatter property, `created` by default. Missing or invalid creation dates use file creation time and sort together with notes that have a valid property, in the selected direction. Equal times use the path as a tie-breaker. Creation-date ranges use the same file creation time fallback. No property is changed. Modification dates use file modification time. Date ranges use the device timezone.
 
 When creation dates are in use, a dialog explains missing or invalid values once per app session for each date property. It shows the counts and, when a supported timestamp filename is available, offers the import preview. The dialog does not change notes. Check Don't show again and close it to save that choice across reloads and skip the extra guidance checks. Turn Creation date guidance back on in settings to restore it. Ordinary card filtering and manual date import remain available.
 
