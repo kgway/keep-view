@@ -1,6 +1,6 @@
 # Keep View Explorer
 
-Browse, filter, and manage notes in a Google Keep-style card view. Use Boolean tag queries, folder and date filters, full-text search, and bulk actions.
+Browse, filter, and organize notes in a Google Keep-style card view. Narrow results with Boolean tag queries, folders, dates, and full-text search, then move or retag notes in bulk.
 
 ![One workflow: 24 notes → project tags → exclude writing → search garden → select the two matches.](docs/media/demo-en.gif?v=initial-hold-3s)
 
