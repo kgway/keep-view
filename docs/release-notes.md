@@ -10,7 +10,7 @@
 - Reuse the canvas used to measure preview labels.
 - Preserve the full view area by overriding default ItemView padding with a selector scoped to Keep View.
 
-Browse, filter, and manage notes in a Google Keep-style card view. Use Boolean tag queries, folder and date filters, full-text search, and bulk actions.
+Browse, filter, and organize notes in a Google Keep-style card view. Narrow results with Boolean tag queries, folders, dates, and full-text search, then move or retag notes in bulk.
 
 - English and Japanese interface.
 - Desktop and mobile layouts.

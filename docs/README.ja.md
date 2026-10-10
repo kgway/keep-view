@@ -1,6 +1,6 @@
 # Keep View Explorer
 
-Google Keep風のカード表示でノートを閲覧・絞り込み・管理できます。AND・OR・NOTのタグ条件、フォルダと日時の絞り込み、全文検索、一括操作に対応しています。
+Google Keep風のカード表示でノートを閲覧・絞り込み・整理できます。AND・OR・NOTのタグ条件、フォルダ、日時、全文検索で絞り込み、ノートの移動やタグの付け替えをまとめて行えます。
 
 ![一続きの操作：24件 → projectタグ → writingを除外 → gardenを検索 → 見つかった2件を選択。](media/demo-en.gif?v=initial-hold-3s)
 
