@@ -1,5 +1,9 @@
 # Keep View Explorer
 
+## Changes in 1.43.11
+
+- Replace the narrow-screen toolbar's `column-gap` declaration with the equivalent grid `gap` shorthand to resolve the remaining CSS compatibility warning.
+
 ## Changes in 1.43.10
 
 - Resolve type-assertion and Promise-handling review warnings.

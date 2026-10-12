@@ -628,7 +628,7 @@ body.theme-dark .kv-card {
 }
 @container (max-width: 320px) {
   .kv-toolbar { --kv-primary-columns: 36px 36px 54px 54px 36px; gap: 8px 0; grid-template-columns: var(--kv-primary-columns) minmax(0,1fr) 36px 36px; }
-  .kv-controls .kv-toolbar .kv-primary-tools, .kv-controls .kv-toolbar > .kv-view-actions { column-gap: 0; }
+  .kv-controls .kv-toolbar .kv-primary-tools, .kv-controls .kv-toolbar > .kv-view-actions { gap: 0; }
   .kv-controls .kv-primary-tools select { font-size: 10px; padding-inline: 1px; }
   .kv-controls .kv-primary-tools .kv-density-select { font-size: 10px; padding-inline: 1px; }
   .kv-controls .kv-sort-tools .kv-segment { width: 50px; padding-inline: 3px; font-size: 10px; }

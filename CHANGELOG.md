@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.43.11 — mobile toolbar compatibility
+
+- Use the grid gap shorthand for narrow-screen toolbar groups while preserving their spacing.
+
 ## 1.43.10 — review fixes
 
 - Replace unnecessary type assertions with typed DOM queries and enable their lint checks.
