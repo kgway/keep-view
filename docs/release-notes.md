@@ -1,11 +1,11 @@
 # Keep View Explorer
 
-## Changes in 1.43.9
+## Changes in 1.43.10
 
-- Move the source to TypeScript with strict type checking.
-- Preserve the plugin ID, saved settings and JavaScript install format.
-- Handle unavailable browser selections and optional popup callbacks safely.
-- Align the manifest introduction with the community listing.
+- Resolve type-assertion and Promise-handling review warnings.
+- Preserve the mobile toolbar layout using nested grids instead of `display: contents`.
+- Handle failed asynchronous previews without leaving reserved scroll space behind.
+- Use the supported settings refresh API on newer Obsidian versions while retaining support for older versions.
 
 ## Recent changes
 

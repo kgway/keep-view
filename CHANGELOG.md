@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.43.10 — review fixes
+
+- Replace unnecessary type assertions with typed DOM queries and enable their lint checks.
+- Handle asynchronous preview failures and release reserved scroll space when a pending preview fails.
+- Replace mobile `display: contents` with nested grids while preserving control positions and view dimensions.
+- Refresh settings through the supported declarative API on newer Obsidian versions, retaining the legacy renderer for older versions.
+
 ## 1.43.9 — TypeScript source
 
 - Move the plugin source to TypeScript with strict type checking and shared data types.

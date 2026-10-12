@@ -32,7 +32,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     // this default padding in the fixture even when app CSS is not supplied.
     await page.addStyleTag({content:'.workspace-leaf-content .view-content { padding:12px 12px 32px; overflow:auto; }'});
     await page.addStyleTag({content:'button:not(:hover){background-color:rgb(250,200,220);background-image:linear-gradient(red,blue)}'});
-    await page.addStyleTag({content:fs.readFileSync(process.env.KEEP_VIEW_PLUGIN_CSS||path.join(root,'styles.css'),'utf8')});
+    const pluginStyle=await page.addStyleTag({content:fs.readFileSync(process.env.KEEP_VIEW_PLUGIN_CSS||path.join(root,'styles.css'),'utf8')});
     // Reproduce the old Dataview snippet loading after the plugin stylesheet.
     await page.addStyleTag({content:`.kv-header { margin-bottom:14px; border-bottom:1px solid #ddd; }
       .workspace-leaf:has(.kv-body-wrapper) .markdown-rendered { width:100% !important; max-width:100% !important; padding-left:0 !important; padding-right:0 !important; }
@@ -114,6 +114,30 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     await page.evaluate(()=>document.getElementById('view').appendChild(initialRoot));
     await page.waitForFunction(()=>document.querySelectorAll('.kv-card').length===30 && !document.body.textContent.includes('読み込み中...'),null,{timeout:4000});
     assert.equal(await page.evaluate(()=>window.readCount),30);
+    if(process.env.KEEP_VIEW_COMPARE_CSS) {
+      const records=[];
+      const measure=()=>page.locator('.kv-header,.kv-body-wrapper,.kv-toolbar button,.kv-toolbar select').evaluateAll(elements=>elements.map(element=>{
+        const bounds=element.getBoundingClientRect();
+        return {label:element.getAttribute('aria-label')||element.className,box:[bounds.x,bounds.y,bounds.width,bounds.height].map(value=>Math.round(value*100)/100)};
+      }));
+      for(const width of [320,360,390,420,421,480,740,741,1000,1200]) {
+        await resize(page,{width,height:850});await page.waitForTimeout(100);
+        const after=await measure();
+        await pluginStyle.evaluate(element=>{element.sheet.disabled=true;});
+        const baseline=await page.addStyleTag({content:fs.readFileSync(process.env.KEEP_VIEW_COMPARE_CSS,'utf8')});
+        await page.waitForTimeout(100);const before=await measure();
+        await baseline.evaluate(element=>element.remove());
+        await pluginStyle.evaluate(element=>{element.sheet.disabled=false;});
+        assert.equal(after.length,before.length);
+        for(let index=0;index<after.length;index++) {
+          assert.equal(after[index].label,before[index].label);
+          for(let dimension=0;dimension<4;dimension++) assert.ok(Math.abs(after[index].box[dimension]-before[index].box[dimension])<=0.25,
+            'Published toolbar geometry changed at '+width+': '+JSON.stringify({before:before[index],after:after[index]}));
+        }
+        records.push({width,controls:after.length,geometryUnchanged:true});
+      }
+      fs.writeFileSync(process.env.KEEP_VIEW_COMPARE_REPORT||path.join(screenshots,'toolbar-comparison.json'),JSON.stringify(records,null,2)+'\n');
+    }
     for(const [width,state,hidden] of [
       [360,{groupByFolder:true,resultTreeOpen:{'仕事':true}},false],
       [1200,{sortField:'name',folderFilters:['仕事']},true]
