@@ -6,8 +6,8 @@ const {execFileSync}=require('node:child_process');
 const assets=['main.js','manifest.json','styles.css'];
 function verificationArgs(file,commit) {
   assert.match(commit||'',/^[a-f0-9]{40}$/,'Supply the full reviewed public commit SHA');
-  return ['attestation','verify',file,'--repo','kgway/keep-view',
-    '--signer-workflow','kgway/keep-view/.github/workflows/attest-release.yml',
+  return ['attestation','verify',file,'--repo','kgway/keep-view-explorer',
+    '--signer-workflow','kgway/keep-view-explorer/.github/workflows/attest-release.yml',
     '--source-ref','refs/heads/main','--source-digest',commit,'--signer-digest',commit,'--deny-self-hosted-runners'];
 }
 if(require.main===module) {
