@@ -1,18 +1,17 @@
-import {record} from "./value-guards.js";
+import type {CacheEntry} from "./types";
+import {record} from "./value-guards";
 
-/** @param {string} text */
-const strToU8=text=>new TextEncoder().encode(text);
-/** @param {Uint8Array} bytes */
-const strFromU8=bytes=>new TextDecoder('utf-8',{fatal:true}).decode(bytes);
-/** @param {Uint8Array} bytes @param {boolean} compress */
-async function transform(bytes,compress) {
+const strToU8=(text: string)=>new TextEncoder().encode(text);
+
+const strFromU8=(bytes: Uint8Array)=>new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+
+async function transform(bytes: Uint8Array,compress: boolean) {
   const stream=new Blob([bytes]).stream().pipeThrough(compress?new CompressionStream('gzip'):new DecompressionStream('gzip'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 const HEADER=[75,86,2];
 
-/** @param {string} text */
-function packText(text) {
+function packText(text: string) {
   const counts=new Uint32Array(65536);
   for(let i=0;i<text.length;i++) counts[text.charCodeAt(i)]++;
   const alphabet=[];
@@ -33,8 +32,7 @@ function packText(text) {
   return bytes;
 }
 
-/** @param {Uint8Array} bytes */
-function unpackText(bytes) {
+function unpackText(bytes: Uint8Array) {
   if(bytes.length<12) throw Error('Incomplete search cache');
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
   const count=view.getUint32(4,true),length=view.getUint32(8,true);
@@ -64,8 +62,7 @@ function unpackText(bytes) {
   return parts.join('');
 }
 
-/** @param {[string,import('./types').CacheEntry][]} entries */
-async function encodeBucket(entries) {
+async function encodeBucket(entries: [string,CacheEntry][]) {
   const text=JSON.stringify(entries.map(([path,entry])=>[path,entry.mtime,entry.size,entry.text]));
   const utf8=strToU8(text),plain=new Uint8Array(4+utf8.length);
   plain.set(HEADER);plain.set(utf8,4);
@@ -78,26 +75,25 @@ async function encodeBucket(entries) {
   return compact.length<compressed.length?compact:compressed;
 }
 
-/** @param {Uint8Array} compressed @returns {Promise<{entries:[string,import('./types').CacheEntry][],legacy:boolean}>} */
-async function decodeBucket(compressed) {
+async function decodeBucket(compressed: Uint8Array): Promise<{entries:[string,CacheEntry][],legacy:boolean}> {
   const bytes=await transform(compressed,false);
   if(bytes[0]===123) {
     const data=record(JSON.parse(strFromU8(bytes)));
     if(data.version!==1 || !Array.isArray(data.entries)) throw Error('Invalid legacy search cache');
-    const entries=data.entries.map(/** @param {unknown} row @returns {[string,import('./types').CacheEntry]} */ row=>{
+    const entries=data.entries.map( (row: unknown): [string,CacheEntry]=>{
       if(!Array.isArray(row) || row.length!==2) throw Error('Invalid legacy search row');
-      const path=/** @type {unknown} */ (row[0]),entry=record(row[1]);
+      const path= (row[0] as unknown),entry=record(row[1]);
       if(typeof path!=='string' || typeof entry.text!=='string' || typeof entry.mtime!=='number' || typeof entry.size!=='number' || !Number.isFinite(entry.mtime) || !Number.isFinite(entry.size)) throw Error('Invalid legacy search entry');
       return [path,{mtime:entry.mtime,size:entry.size,text:entry.text}];
     });
     return {entries,legacy:true};
   }
   if(!HEADER.every((byte,i)=>bytes[i]===byte) || bytes.length<4 || bytes[3]>1) throw Error('Invalid search cache format');
-  const rows=/** @type {unknown} */ (JSON.parse(bytes[3]===1?unpackText(bytes):strFromU8(bytes.subarray(4))));
+  const rows= (JSON.parse(bytes[3]===1?unpackText(bytes):strFromU8(bytes.subarray(4))) as unknown);
   if(!Array.isArray(rows)) throw Error('Invalid search cache rows');
-  const entries=rows.map(/** @param {unknown} row @returns {[string,import('./types').CacheEntry]} */ row=>{
+  const entries=rows.map( (row: unknown): [string,CacheEntry]=>{
     if(!Array.isArray(row) || row.length!==4) throw Error('Invalid search cache row');
-    const values=/** @type {unknown[]} */ (row);
+    const values= (row as unknown[]);
     const path=values[0],mtime=values[1],size=values[2],text=values[3];
     if(typeof path!=='string' || typeof text!=='string' || typeof mtime!=='number' || typeof size!=='number' || !Number.isFinite(mtime) || !Number.isFinite(size)) throw Error('Invalid search cache entry');
     return [path,{mtime,size,text}];

@@ -91,7 +91,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       app.fileManager={getNewFileParent:()=>({path:'/',children:[]})};
       app.vault.create=async(path,content)=>{exportsWritten.push({path,content});return {path};};
     });
-    const modules=Object.fromEntries(fs.readdirSync(path.join(root,'lib')).filter(name=>/\.(js|json)$/.test(name)).map(name=>['./lib/'+(name.endsWith('.json')?name:name.slice(0,-3)),name.endsWith('.json')?'module.exports='+fs.readFileSync(path.join(root,'lib',name),'utf8'):compileSource(fs.readFileSync(path.join(root,'lib',name),'utf8'))]));
+    const modules=Object.fromEntries(fs.readdirSync(path.join(root,'lib')).filter(name=>/\.(ts|json)$/.test(name)).map(name=>['./lib/'+(name.endsWith('.json')?name:name.slice(0,-3)),name.endsWith('.json')?'module.exports='+fs.readFileSync(path.join(root,'lib',name),'utf8'):compileSource(fs.readFileSync(path.join(root,'lib',name),'utf8'))]));
     await page.evaluate(sources=>{
       const originalRequire=window.require,cache=new Map();
       window.require=id=>{id=id.replace(/\.js$/,'');
@@ -102,7 +102,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
       };
     },modules);
     await page.evaluate(()=>require('./lib/i18n').setLanguage('ja'));
-    await page.addScriptTag({content:compileSource(fs.readFileSync(path.join(root,'main.js'),'utf8'))+'\naddIcon(TREE_ICON,TREE_ICON_SVG);window.currentSettings={...DEFAULT_SETTINGS,showDateGuidance:false};'});
+    await page.addScriptTag({content:compileSource(fs.readFileSync(path.join(root,'main.ts'),'utf8'))+'\naddIcon(TREE_ICON,TREE_ICON_SVG);window.currentSettings={...DEFAULT_SETTINGS,showDateGuidance:false};'});
     assert.deepEqual(errors,[],'Compiled plugin source loads before mounting');
     // A new ItemView can open before Obsidian attaches its content to the workspace.
     await page.evaluate(()=>{
@@ -298,7 +298,7 @@ const screenshots=path.join(root,'.artifacts','ui');fs.mkdirSync(screenshots,{re
     const mousePage=await browser.newPage({hasTouch:false});
     await mousePage.setContent('<style>:root{--text-faint:#888;--background-secondary:#f8f8f8;--text-normal:#222}</style><div class="keep-view-content"><div class="keep-view-root"><div class="kv-card" style="width:200px;height:100px"><div class="kv-scroll-rail" style="height:80px"><div class="kv-scroll-thumb" style="height:40px"></div></div></div></div></div>');
     await mousePage.addStyleTag({content:fs.readFileSync(path.join(root,'styles.css'),'utf8')});
-    await mousePage.addScriptTag({content:"(()=>{const module={exports:{}};const exports=module.exports;const require=()=>({});\n"+compileSource(fs.readFileSync(path.join(root,'lib/ui.js'),'utf8'))+"\nwindow.releaseHover=module.exports.suppressHoverTooltips(document.querySelector('.keep-view-content'));})();"});
+    await mousePage.addScriptTag({content:"(()=>{const module={exports:{}};const exports=module.exports;const require=()=>({});\n"+compileSource(fs.readFileSync(path.join(root,'lib/ui.ts'),'utf8'))+"\nwindow.releaseHover=module.exports.suppressHoverTooltips(document.querySelector('.keep-view-content'));})();"});
     const mouseThumb=mousePage.locator('.kv-scroll-thumb');
     const mouseRest=await mouseThumb.evaluate(el=>getComputedStyle(el).backgroundColor);
     await mousePage.evaluate(()=>{const tip=document.createElement('div');tip.className='tooltip';tip.textContent='説明';tip.style.pointerEvents='none';document.body.appendChild(tip);});

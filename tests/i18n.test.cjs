@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {t,setLanguage,getLocale}=require('../lib/i18n');
+const {t,setLanguage,getLocale}=require('./load-source.cjs').loadSource('../lib/i18n');
 const messages=require('../lib/ja.json');
 
 test('message catalog edits change text while placeholders preserve arbitrary file names',()=>{

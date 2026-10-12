@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 function runSource(code,context) {return vm.runInNewContext(compileSource(code),context);}
-const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'main.js'), 'utf8');
+const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'main.ts'), 'utf8');
 
 function core(saved={}) {
   const sandbox = {module:{exports:{}}, require:() => ({Plugin:class {}, ItemView:class {}, Modal:class {}, PluginSettingTab:class{}, getAllTags:cache=>cache.tags}), structuredClone, console};

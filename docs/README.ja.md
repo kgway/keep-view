@@ -47,7 +47,7 @@ Obsidian 1.8.7 以降が必要です。[Community directoryの紹介ページ](h
 2. Obsidian の設定でコミュニティプラグインを有効にし、Keep View Explorer を有効にします。
 3. リボンの Keep View Explorer アイコン、またはコマンド **Open Keep View Explorer** で開きます。
 
-更新時はプラグインを無効にして配布ファイルを置き換え、再び有効にします。設定を保存する `data.json` は残してください。ソースコードの `main.js` は開発用です。手動インストールにはリリースまたは `dist/keep-view/` のファイルを使用してください。
+更新時はプラグインを無効にして配布ファイルを置き換え、再び有効にします。設定を保存する `data.json` は残してください。ソースコードの `main.ts` は開発用です。手動インストールにはリリースまたは `dist/keep-view/` のファイルを使用してください。
 
 ## ノートを探す
 

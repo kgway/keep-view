@@ -1,7 +1,7 @@
 const {gzipSync,strToU8}=require('fflate');
 const {writeFileSync,mkdirSync}=require('node:fs');
-const {encodeBucket,decodeBucket}=require('../lib/search-codec');
-const {bucketFor}=require('../lib/search-index');
+const {encodeBucket,decodeBucket}=require('../tests/load-source.cjs').loadSource('../lib/search-codec');
+const {bucketFor}=require('../tests/load-source.cjs').loadSource('../lib/search-index');
 const {texts,files}=require('./search-fixture.cjs').createSearchFixture();
 
 // Reference signature from 1.26, retained only for the storage comparison.

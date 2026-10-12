@@ -1,24 +1,22 @@
-import {t as msg,setLanguage,getLocale} from "./lib/i18n.js";
+import type {ContentEntry, FolderNode, Page, PathExport, ResultFolder, SavedState, Settings, Snapshot, TagDraft, TagNode, ViewState} from "./lib/types";
+import type {App, SettingGroup, TAbstractFile, TFile, WorkspaceLeaf} from "obsidian";
+import {t as msg,setLanguage,getLocale} from "./lib/i18n";
 import {Plugin, ItemView, Modal, Notice, PluginSettingTab, Setting, getAllTags, getLanguage, setIcon, addIcon, MarkdownRenderer, Component, requireApiVersion} from "obsidian";
-import {CardSearch,normalizeSearch} from "./lib/card-search.js";
-import {formatPathExport} from "./lib/path-export.js";
-import {SearchIndex} from "./lib/search-index.js";
-import {noteTags,restoreTagChanges,editNoteTags,moveSelection,trashSelectedNotes,validTimeZone,localIsoTimestamp,createNote} from "./lib/note-operations.js";
-import {openNoteInForeground} from "./lib/note-opening.js";
-import {iconButton,folderDropdownRow,dropdownCheckbox,disclosureIcon,animateDisclosure,suppressHoverTooltips} from "./lib/ui.js";
-import {record,isFile,isFolder,clone,errorMessage,dictionary} from "./lib/value-guards.js";
-import {readState,readSettings} from "./lib/saved-data.js";
-import {DateGuidance} from "./lib/date-guidance.js";
-/** @typedef {import('./lib/types').TagNode} TagNode */
-/** @typedef {import('./lib/types').Page} Page */
-/** @typedef {import('./lib/types').SavedState} SavedState */
-/** @typedef {import('./lib/types').Snapshot} Snapshot */
-/** @typedef {{type:string,value?:string}} Token */
-/** @typedef {{node:TagNode,pos:number}} ParsedNode */
-/** @typedef {HTMLDivElement & {_anchor?:HTMLElement,_reposition?:()=>void,_cleanup?:()=>void,_isFolderDropdown?:boolean}} Popup */
-/** @typedef {{key:string|null,ready:boolean,matches:Set<string>,errors:string[],waiting?:boolean,files?:Set<string>,completed?:number,total?:number,slow?:boolean,repaint?:()=>void}} SearchState */
-/** @typedef {HTMLElement & {_treeGroups?:Set<string>,_appendCards?:(pages:Page[])=>void}} CardBody */
-/** @typedef {{name:string,desc?:string,render:(setting:import('obsidian').Setting,group:import('obsidian').SettingGroup|null)=>void}} SettingRow */
+import {CardSearch,normalizeSearch} from "./lib/card-search";
+import {formatPathExport} from "./lib/path-export";
+import {SearchIndex} from "./lib/search-index";
+import {noteTags,restoreTagChanges,editNoteTags,moveSelection,trashSelectedNotes,validTimeZone,localIsoTimestamp,createNote} from "./lib/note-operations";
+import {openNoteInForeground} from "./lib/note-opening";
+import {iconButton,folderDropdownRow,dropdownCheckbox,disclosureIcon,animateDisclosure,suppressHoverTooltips} from "./lib/ui";
+import {record,isFile,isFolder,clone,errorMessage,dictionary} from "./lib/value-guards";
+import {readState,readSettings} from "./lib/saved-data";
+import {DateGuidance} from "./lib/date-guidance";
+type Token = {type:string,value?:string};
+type ParsedNode = {node:TagNode,pos:number};
+type Popup = HTMLDivElement & {_anchor?:HTMLElement,_reposition?:()=>void,_cleanup?:()=>void,_isFolderDropdown?:boolean};
+type SearchState = {key:string|null,ready:boolean,matches:Set<string>,errors:string[],waiting?:boolean,files?:Set<string>,completed?:number,total?:number,slow?:boolean,repaint?:()=>void};
+type CardBody = HTMLElement & {_treeGroups?:Set<string>,_appendCards?:(pages:Page[])=>void};
+type SettingRow = {name:string,desc?:string,render:(setting:Setting,group:SettingGroup|null)=>void};
 const VIEW_TYPE = 'keep-view';
 const KEEP_VIEW_ICON = 'keep-view-note-bulb';
 const KEEP_VIEW_ICON_SVG = `<g fill="none" stroke="currentColor" stroke-width="6.25" stroke-linecap="round" stroke-linejoin="round">
@@ -30,25 +28,24 @@ const KEEP_VIEW_ICON_SVG = `<g fill="none" stroke="currentColor" stroke-width="6
 const TREE_ICON='keep-view-tree';
 const EXPORT_ICON='log-out';
 const TREE_ICON_SVG='<g fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 14v58q0 6 6 6h20M22 34h26"/><rect x="48" y="22" width="38" height="24" rx="5"/><rect x="48" y="66" width="38" height="24" rx="5"/></g>';
-/** @type {import('./lib/types').Settings} */
-const DEFAULT_SETTINGS = {dateProperty:'created',creationTimeZone:'',previewLengths:[50,100,150,200,400],previewMode:'markdown',confirmDelete:true,fastSearch:true,showDateGuidance:true,language:'auto'};
 
-/** @param {string} raw */
-function markdownBody(raw) {
+const DEFAULT_SETTINGS: Settings = {dateProperty:'created',creationTimeZone:'',previewLengths:[50,100,150,200,400],previewMode:'markdown',confirmDelete:true,fastSearch:true,showDateGuidance:true,language:'auto'};
+
+function markdownBody(raw: string) {
   const leadingBlankLines=/^(?:[ \t]*\r?\n)+/;
   return raw.replace(/^\uFEFF/,'').replace(leadingBlankLines,'')
     .replace(/^---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)(?:\r?\n|$)/,'').replace(leadingBlankLines,'');
 }
-/** @param {unknown} value @returns {number[]|null} */
-function previewLengths(value) {
-  const values=Array.isArray(value)?/** @type {unknown[]} */ (value):String(value).split(/[,、，\s]+/).filter(Boolean).map(Number);
-  if(!values.length || values.length>20 || values.some(n=>typeof n!=='number'||!Number.isInteger(n)||n<1||n>10000)) return null;
-  return [...new Set(values.filter(/** @param {unknown} n @returns {n is number} */ n=>typeof n==='number'))].sort((a,b)=>a-b);
+
+function previewLengths(value: unknown): number[]|null {
+  const values=Array.isArray(value)? (value as unknown[]):String(value).split(/[,、，\s]+/).filter(Boolean).map(Number);
+  if(!values.length || values.length>20 || values.some((n)=>typeof n!=='number'||!Number.isInteger(n)||n<1||n>10000)) return null;
+  return [...new Set(values.filter( (n: unknown): n is number=>typeof n==='number'))].sort((a,b)=>a-b);
 }
 
 // BEGIN MIGRATION HELPERS — also packaged as a standalone Obsidian user script.
-/** @param {unknown} value */
-function parseIsoTimestamp(value) {
+
+function parseIsoTimestamp(value: unknown) {
   if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.getTime() : null;
   if (typeof value !== 'string') return null;
   const text = value.trim();
@@ -65,8 +62,7 @@ function parseIsoTimestamp(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/** @param {string} basename */
-function timestampFromFilename(basename) {
+function timestampFromFilename(basename: string) {
   const match = basename.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})[_:](\d{2})[_:](\d{2})(\.\d{1,9})?(Z|[+-]\d{2}[_:]\d{2})$/);
   if (!match) return null;
   const [,date,hour,minute,second,fraction='',zone] = match;
@@ -74,35 +70,30 @@ function timestampFromFilename(basename) {
   return parseIsoTimestamp(iso) === null ? null : iso;
 }
 
-/** @param {unknown} property @returns {property is string} */
-function validatePropertyName(property) {
+function validatePropertyName(property: unknown): property is string {
   return typeof property==='string' && property.trim().length>0 && !/[\r\n\0]/.test(property) && !['__proto__','constructor','prototype'].includes(property.trim());
 }
 
-/** @param {unknown} folder */
-function normalizeFolderScope(folder) {
+function normalizeFolderScope(folder: unknown) {
   const clean = String(folder || '').replace(/\\/g,'/').replace(/^\/+|\/+$/g,'');
-  if (clean.split('/').some(part => part==='.' || part==='..')) throw new Error(msg("フォルダには Vault 内の相対パスを指定してください"));
+  if (clean.split('/').some((part) => part==='.' || part==='..')) throw new Error(msg("フォルダには Vault 内の相対パスを指定してください"));
   return clean;
 }
 
-/** Default is a read-only preview. Runs inside Obsidian with its public APIs.
- * @param {import('obsidian').App} app
- * @param {{property?:string,folder?:string,apply?:boolean,paths?:string[]|null,cancelled?:()=>boolean}} options
- */
-async function migrateCreated(app, {property='created', folder='', apply=false, paths=null, cancelled=()=>false}={}) {
+/** Default is a read-only preview. Runs inside Obsidian with its public APIs. */
+async function migrateCreated(app: App, {property='created', folder='', apply=false, paths=null, cancelled=()=>false}: {property?:string,folder?:string,apply?:boolean,paths?:string[]|null,cancelled?:()=>boolean}={}) {
   if (!validatePropertyName(property)) throw new Error(msg("有効なプロパティ名を指定してください"));
   property = property.trim();
   folder = normalizeFolderScope(folder);
   const allowed = paths ? new Set(paths) : null;
-  /** @type {{property:string,folder:string,applied:boolean,rows:{path:string,value:string|null,status:string,error?:string}[],cancelled?:boolean}} */
-  const report = {property, folder, applied:apply, rows:[]};
-  const files = app.vault.getMarkdownFiles().filter(file => (!folder || file.path.startsWith(folder+'/')) && (!allowed || allowed.has(file.path))).sort((a,b)=>a.path.localeCompare(b.path));
+
+  const report: {property:string,folder:string,applied:boolean,rows:{path:string,value:string|null,status:string,error?:string}[],cancelled?:boolean} = {property, folder, applied:apply, rows:[]};
+  const files = app.vault.getMarkdownFiles().filter((file) => (!folder || file.path.startsWith(folder+'/')) && (!allowed || allowed.has(file.path))).sort((a,b)=>a.path.localeCompare(b.path));
   for (const file of files) {
     if (cancelled()) { report.cancelled=true; break; }
     const iso = timestampFromFilename(file.basename);
-    /** @type {{path:string,value:string|null,status:string,error?:string}} */
-    const row = {path:file.path, value:iso, status:'unrecognized'};
+
+    const row: {path:string,value:string|null,status:string,error?:string} = {path:file.path, value:iso, status:'unrecognized'};
     report.rows.push(row);
     if (!iso) continue;
     const fm = app.metadataCache.getFileCache(file)?.frontmatter;
@@ -111,7 +102,7 @@ async function migrateCreated(app, {property='created', folder='', apply=false, 
     if (!apply) continue;
     try {
       // Recheck the current frontmatter atomically; metadata cache may be stale.
-      await app.fileManager.processFrontMatter(file, current => {
+      await app.fileManager.processFrontMatter(file, (current) => {
         if (Object.prototype.hasOwnProperty.call(current,property)) row.status='existing';
         else { Object.defineProperty(current, property, {value:iso,writable:true,enumerable:true,configurable:true}); row.status='written'; }
       });
@@ -121,10 +112,9 @@ async function migrateCreated(app, {property='created', folder='', apply=false, 
 }
 // END MIGRATION HELPERS
 
-/** @param {number[]} heights @param {number} columns @param {number} gap */
-function masonryPositions(heights, columns, gap) {
+function masonryPositions(heights: number[], columns: number, gap: number) {
   const bottoms = Array.from({length:columns},()=>0);
-  const positions = heights.map(height => {
+  const positions = heights.map((height) => {
     const top = Math.min(...bottoms);
     const column = bottoms.indexOf(top);
     bottoms[column] = top + height + gap;
@@ -133,116 +123,114 @@ function masonryPositions(heights, columns, gap) {
   return {positions, height:Math.max(0,...bottoms)- (heights.length ? gap : 0)};
 }
 
-/** @param {import('obsidian').App} app @param {Page[]} pages @param {Record<string,unknown>} filters @param {string} property @returns {import('./lib/types').PathExport} */
-function makePathExport(app, pages, filters, property) {
+function makePathExport(app: App, pages: Page[], filters: Record<string,unknown>, property: string): PathExport {
   return {schema:'keep-view-paths/v1', exportedAt:new Date().toISOString(), vault:app.vault.getName(),
     pathBase:'vault-relative', count:pages.length,
     filters:{...filters, dateProperty:property, dateRangeTimezone:Intl.DateTimeFormat().resolvedOptions().timeZone},
-    paths:pages.map(page=>page.file.path)};
+    paths:pages.map((page)=>page.file.path)};
 }
 
-/** @param {Page[]} pages */
-function resultFolderTree(pages) {
-  /** @type {import('./lib/types').ResultFolder} */
-  const root={path:'',name:msg("(ルート)"),pages:[],children:new Map(),count:0};
+function resultFolderTree(pages: Page[]) {
+
+  const root: ResultFolder={path:'',name:msg("(ルート)"),pages:[],children:new Map(),count:0};
   for (const page of pages) {
     let node=root; node.count++;
     for (const part of page.file.folder.split('/').filter(Boolean)) {
       if (!node.children.has(part)) node.children.set(part,{path:node.path?node.path+'/'+part:part,name:part,pages:[],children:new Map(),count:0});
-      node=node.children.get(part); node.count++;
+      node=node.children.get(part)!; node.count++;
     }
     node.pages.push(page);
   }
   return root;
 }
 
-/** @param {import('obsidian').App} app @param {HTMLElement} container @param {Partial<SavedState>} saved @param {(state:SavedState)=>void} persist @param {import('./lib/types').Settings} settings @param {SearchIndex|null} searchIndex @param {{onHideDateGuidance?:()=>void,dateGuidanceShown?:Set<string>}} callbacks */
-function mountKeepView(app, container, saved, persist, settings = DEFAULT_SETTINGS, searchIndex = null, callbacks = {}) {
-const document = /** @type {Document & {caretPositionFromPoint?:(x:number,y:number)=>{offsetNode:Node,offset:number}|null}} */ (container.ownerDocument);
-const window = /** @type {Window & typeof globalThis} */ (document.defaultView);
+function mountKeepView(app: App, container: HTMLElement, saved: Partial<SavedState>, persist: (state:SavedState)=>void, settings: Settings = DEFAULT_SETTINGS, searchIndex: SearchIndex|null = null, callbacks: {onHideDateGuidance?:()=>void,dateGuidanceShown?:Set<string>} = {}) {
+const document =  (container.ownerDocument as Document & {caretPositionFromPoint?:(x:number,y:number)=>{offsetNode:Node,offset:number}|null});
+const window =  (document.defaultView as NonNullable<Document['defaultView']>);
 const AbortController = window.AbortController;
 const lifetime = new AbortController();
 const releaseTooltips=suppressHoverTooltips(container);
 let disposed = false, revision = 0;
-/** @type {(()=>void)|null} */ let dragCleanup=null;
-/** @type {PathExportModal|null} */ let exportModal=null;
-/** @type {TextSearchModal|null} */ let searchModal=null;
-/** @type {DeleteNotesModal|null} */ let deleteModal=null;
-/** @type {MigrationModal|null} */ let dateMigrationModal=null;
+ let dragCleanup: (()=>void)|null=null;
+ let exportModal: PathExportModal|null=null;
+ let searchModal: TextSearchModal|null=null;
+ let deleteModal: DeleteNotesModal|null=null;
+ let dateMigrationModal: MigrationModal|null=null;
 const dateGuidance=new DateGuidance();
-const dateGuidanceShown=callbacks.dateGuidanceShown || new Set(/** @type {string[]} */ ([]));
-/** @type {CreationDateModal|null} */ let dateGuidanceModal=null;
-const cardSearch=new CardSearch(app,{index:searchIndex,yieldTask:()=>new Promise(resolve=>window.setTimeout(resolve,0))});
-/** @type {SearchState} */
-let searchState={key:null,ready:true,matches:new Set(),errors:[]};
+const dateGuidanceShown=callbacks.dateGuidanceShown || new Set( ([] as string[]));
+ let dateGuidanceModal: CreationDateModal|null=null;
+const cardSearch=new CardSearch(app,{index:searchIndex,yieldTask:()=>new Promise((resolve)=>window.setTimeout(resolve,0))});
+
+let searchState: SearchState={key:null,ready:true,matches:new Set(),errors:[]};
 let searchActivated=false;
-let deferTreeCards=false,treeCardTimer=null;
-const treeCardQueue=/** @type {(()=>boolean)[]} */ ([]);
-/** @param {()=>boolean} task */
-const scheduleTreeCards=task=>{
+let deferTreeCards=false;let treeCardTimer: number|null=null;
+const treeCardQueue= ([] as (()=>boolean)[]);
+
+const scheduleTreeCards=(task: ()=>boolean)=>{
   treeCardQueue.push(task);
   if(treeCardTimer!==null) return;
   const next=()=>{
     treeCardTimer=null;if(disposed) {treeCardQueue.length=0;return;}
-    while(treeCardQueue.length) {if(treeCardQueue.shift()()) break;}
+    while(treeCardQueue.length) {if(treeCardQueue.shift()!()) break;}
     if(treeCardQueue.length) treeCardTimer=setTimeout(next,16);
   };
   treeCardTimer=setTimeout(next,0);
 };
 // Clear only this view's text selection; leave dragging and copy gestures intact.
-/** @type {{id:number,x:number,y:number,at:number,anchor:Node,focus:Node,start:number,end:number}|null} */
-let selectionTap=null;
-document.addEventListener?.('pointerdown',event=>{
+
+let selectionTap: {id:number,x:number,y:number,at:number,anchor:Node|null,focus:Node|null,start:number,end:number}|null=null;
+document.addEventListener?.('pointerdown',(event)=>{
   selectionTap=null;if(event.button!==0) return;
   const selected=window.getSelection?.();
   if(!selected || selected.isCollapsed || !container.contains(selected.anchorNode)) return;
   const range=selected.getRangeAt(0);
-  const inside=[...range.getClientRects()].some(rect=>event.clientX>=rect.left-12 && event.clientX<=rect.right+12 && event.clientY>=rect.top-12 && event.clientY<=rect.bottom+12);
+  const inside=[...range.getClientRects()].some((rect)=>event.clientX>=rect.left-12 && event.clientX<=rect.right+12 && event.clientY>=rect.top-12 && event.clientY<=rect.bottom+12);
   if(!inside) {selected.removeAllRanges();return;}
   selectionTap={id:event.pointerId,x:event.clientX,y:event.clientY,at:Date.now(),anchor:selected.anchorNode,focus:selected.focusNode,start:selected.anchorOffset,end:selected.focusOffset};
 },{capture:true,signal:lifetime.signal});
-document.addEventListener?.('pointerup',event=>{
+document.addEventListener?.('pointerup',(event)=>{
   const tap=selectionTap;selectionTap=null;
   if(!tap || tap.id!==event.pointerId || Date.now()-tap.at>=450 || Math.hypot(event.clientX-tap.x,event.clientY-tap.y)>8) return;
   const selected=window.getSelection();
+  if(!selected) return;
   if(selected.anchorNode===tap.anchor && selected.focusNode===tap.focus && selected.anchorOffset===tap.start && selected.focusOffset===tap.end) selected.removeAllRanges();
 },{capture:true,signal:lifetime.signal});
-const selectedPaths=new Set(/** @type {string[]} */ ([]));
-const selectedFolders=new Set(/** @type {string[]} */ ([]));
-/** @type {HTMLElement|null} */ let selectionBar=null;
-/** @type {import('./lib/types').TagDraft|null} */ let tagDraft=null;
-/** @type {string|null} */ let moveDraft=null;
+const selectedPaths=new Set( ([] as string[]));
+const selectedFolders=new Set( ([] as string[]));
+ let selectionBar: HTMLElement|null=null;
+ let tagDraft: TagDraft|null=null;
+ let moveDraft: string|null=null;
 let selectionMode=false,selectionBusy=false;
-const draftDirty=()=>tagDraft && (tagDraft.checked.length!==tagDraft.common.length || tagDraft.checked.some(tag=>!tagDraft.common.includes(tag)));
+const draftDirty=()=>{const draft=tagDraft;return draft && (draft.checked.length!==draft.common.length || draft.checked.some((tag)=>!draft.common.includes(tag)));};
 const updateSelection=()=>{
-  for(const card of /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.kv-card'))) {
-    const selected=selectedPaths.has(card.dataset.path);card.classList.toggle('is-selected',selected);
+  for(const card of  (container.querySelectorAll('.kv-card') as NodeListOf<HTMLElement>)) {
+    const selected=selectedPaths.has(card.dataset.path!);card.classList.toggle('is-selected',selected);
     card.setAttribute('aria-label',`${card.dataset.path}${selected?msg("（選択中）"):''}`);
   }
-  for(const row of /** @type {NodeListOf<HTMLButtonElement & {_selectionPaths?:string[]}>} */ (container.querySelectorAll('.kv-result-folder'))) {
-    const paths=row._selectionPaths||[],count=paths.filter(path=>selectedPaths.has(path)).length;
+  for(const row of  (container.querySelectorAll('.kv-result-folder') as NodeListOf<HTMLButtonElement & {_selectionPaths?:string[]}>)) {
+    const paths=row._selectionPaths||[],count=paths.filter((path)=>selectedPaths.has(path)).length;
     row.classList.toggle('is-selected',count>0 && count===paths.length);
     row.classList.toggle('is-partial',count>0 && count<paths.length);
     row.setAttribute('aria-pressed',count===0?'false':count===paths.length?'true':'mixed');
   }
   if(!selectionBar) return;
-  const controls=/** @type {HTMLElement|null} */ (container.querySelector('.kv-controls'));
+  const controls= (container.querySelector('.kv-controls') as HTMLElement|null);
   if(controls) controls.inert=selectionBusy;
   selectionBar.hidden=!selectionMode;
-  /** @type {HTMLElement|null} */ (selectionBar.querySelector('.kv-selection-count')).textContent=msg("{0} 件選択", [selectedPaths.size]);
-  const edit=/** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-edit'));
+   (selectionBar.querySelector('.kv-selection-count') as HTMLElement).textContent=msg("{0} 件選択", [selectedPaths.size]);
+  const edit= (selectionBar.querySelector('.kv-selection-edit') as HTMLButtonElement);
   edit.disabled=selectionBusy || !selectedPaths.size;
-  selectionBar.querySelector('button').disabled=selectionBusy;
-  /** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-move')).disabled=selectionBusy || !selectedPaths.size;
-  /** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-delete')).disabled=selectionBusy || !selectedPaths.size;
-  const confirm=/** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-confirm'));
+  selectionBar.querySelector('button')!.disabled=selectionBusy;
+   (selectionBar.querySelector('.kv-selection-move') as HTMLButtonElement).disabled=selectionBusy || !selectedPaths.size;
+   (selectionBar.querySelector('.kv-selection-delete') as HTMLButtonElement).disabled=selectionBusy || !selectedPaths.size;
+  const confirm= (selectionBar.querySelector('.kv-selection-confirm') as HTMLButtonElement);
   confirm.hidden=!draftDirty() && moveDraft===null;confirm.disabled=selectionBusy || !selectedPaths.size;
-  for(const [selector,stack] of /** @type {[string,Snapshot[]][]} */ ([['.kv-undo',S.undoStack],['.kv-redo',S.redoStack]])) {
-    for(const button of /** @type {NodeListOf<HTMLButtonElement>} */ (container.querySelectorAll(selector))) button.disabled=selectionBusy || !stack.length;
+  for(const [selector,stack] of  ([['.kv-undo',S.undoStack],['.kv-redo',S.redoStack]] as [string,Snapshot[]][])) {
+    for(const button of  (container.querySelectorAll(selector) as NodeListOf<HTMLButtonElement>)) button.disabled=selectionBusy || !stack.length;
   }
 };
-/** @param {string} path */
-const toggleSelection=path=>{
+
+const toggleSelection=(path: string)=>{
   if(selectionBusy) return;
   pushUndo();tagDraft=null;moveDraft=null;closePopup();
   if(selectedPaths.has(path)) selectedPaths.delete(path);else selectedPaths.add(path);
@@ -250,23 +238,23 @@ const toggleSelection=path=>{
   selectionMode=selectedPaths.size>0;
   updateSelection();
 };
-/** @param {string} folder */
-const toggleFolderSelection=folder=>{
-  const paths=app.vault.getMarkdownFiles().filter(file=>file.path.startsWith(folder+'/')).map(file=>file.path);
+
+const toggleFolderSelection=(folder: string)=>{
+  const paths=app.vault.getMarkdownFiles().filter((file)=>file.path.startsWith(folder+'/')).map((file)=>file.path);
   if(selectionBusy || !paths.length) return;
   pushUndo();tagDraft=null;moveDraft=null;closePopup();
-  const remove=paths.every(path=>selectedPaths.has(path));
+  const remove=paths.every((path)=>selectedPaths.has(path));
   for(const existing of selectedFolders) if(existing===folder || existing.startsWith(folder+'/') || folder.startsWith(existing+'/')) selectedFolders.delete(existing);
   if(!remove) selectedFolders.add(folder);
   for(const path of paths) {if(remove) selectedPaths.delete(path);else selectedPaths.add(path);}
   selectionMode=selectedPaths.size>0;updateSelection();
 };
-/** @param {HTMLElement} anchor */
-const openMoveDropdown=anchor=>{
+
+const openMoveDropdown=(anchor: HTMLElement)=>{
   if(selectionBusy || !selectedPaths.size) return;
-  const paths=[...selectedPaths],counts=/** @type {Map<string,number>} */ (new Map());
+  const paths=[...selectedPaths],counts= (new Map() as Map<string,number>);
   for(const path of paths) {const folder=path.includes('/')?path.slice(0,path.lastIndexOf('/')):'';counts.set(folder,(counts.get(folder)||0)+1);}
-  let target=moveDraft,query='';const expanded=new Set(/** @type {string[]} */ ([]));
+  let target=moveDraft,query='';const expanded=new Set( ([] as string[]));
   const folders=new Set(['']);
   for(const file of app.vault.getAllLoadedFiles?.()||app.vault.getMarkdownFiles()) {
     const folder=isFolder(file)?file.path:file.path.split('/').slice(0,-1).join('/');
@@ -275,7 +263,7 @@ const openMoveDropdown=anchor=>{
   const sorted=[...folders].sort((a,b)=>a.localeCompare(b));
   for(const folder of counts.keys()) {let current=folder;while(current) {expanded.add(current);current=current.split('/').slice(0,-1).join('/');}}
   if(target) {let current=target;while(current) {expanded.add(current);current=current.split('/').slice(0,-1).join('/');}}
-  openPopup(anchor,popup=>{
+  openPopup(anchor,(popup)=>{
     const search=popup.createEl('input',{cls:'kv-dropdown-search',type:'search',placeholder:msg("フォルダを検索...")});
     const list=popup.createDiv(),summary=popup.createDiv({cls:'kv-move-current'});
     const rebuild=()=>{
@@ -283,15 +271,15 @@ const openMoveDropdown=anchor=>{
       for(const folder of sorted) {
         const parent=folder.split('/').slice(0,-1).join('/');
         const ancestors=parent.split('/').filter(Boolean).map((_,index)=>parent.split('/').slice(0,index+1).join('/'));
-        if(query?!folder.toLocaleLowerCase().includes(query):ancestors.some(path=>!expanded.has(path))) continue;
-        const children=folder && sorted.some(path=>path.startsWith(folder+'/'));
-        const {item:row,toggle:arrow}=folderDropdownRow(list,{name:folder?folder.split('/').pop():msg("(ルート)"),selected:target===folder,depth:folder?folder.split('/').length-1:0,children,open:expanded.has(folder)});
+        if(query?!folder.toLocaleLowerCase().includes(query):ancestors.some((path)=>!expanded.has(path))) continue;
+        const children=!!folder && sorted.some((path)=>path.startsWith(folder+'/'));
+        const {item:row,toggle:arrow}=folderDropdownRow(list,{name:folder?folder.split('/').pop()!:msg("(ルート)"),selected:target===folder,depth:folder?folder.split('/').length-1:0,children,open:expanded.has(folder)});
         row.classList.add('kv-move-folder');row.dataset.destination=folder;
         const count=counts.get(folder)||0;
-        if(children) arrow.onclick=event=>{event.stopPropagation();animateDisclosure(arrow,!arrow.classList.contains('is-open'),open=>{if(open) expanded.add(folder);else expanded.delete(folder);rebuild();});};
+        if(children) arrow.onclick=(event)=>{event.stopPropagation();animateDisclosure(arrow,!arrow.classList.contains('is-open'),(open)=>{if(open) expanded.add(folder);else expanded.delete(folder);rebuild();});};
         if(count) row.createSpan({cls:'kv-move-count',text:msg("{0}/{1}", [count, paths.length])});
-        const invalid=[...selectedFolders].some(source=>folder===source || folder.startsWith(source+'/'));
-        if(invalid) {row.classList.add('is-partial');row.setAttribute('aria-disabled','true');row.querySelector('input').disabled=true;}
+        const invalid=[...selectedFolders].some((source)=>folder===source || folder.startsWith(source+'/'));
+        if(invalid) {row.classList.add('is-partial');row.setAttribute('aria-disabled','true');row.querySelector('input')!.disabled=true;}
         row.onclick=()=>{if(invalid) return;pushUndo();target=target===folder?null:folder;moveDraft=target;rebuild();updateSelection();};
       }
       summary.textContent=(target===null?'':msg("移動先: {0}", [target||msg("Vault 直下")]))+(selectedFolders.size?msg("（選択フォルダは添付ファイルを含め階層ごと移動）"):'');
@@ -305,18 +293,18 @@ const exitSelection=()=>{
   pushUndo();selectionMode=false;selectedPaths.clear();selectedFolders.clear();tagDraft=null;moveDraft=null;closePopup();updateSelection();
 };
 const prepareTagDraft=()=>{
-  const counts=/** @type {Map<string,number>} */ (new Map());
+  const counts= (new Map() as Map<string,number>);
   for(const path of selectedPaths) {
     const file=app.vault.getAbstractFileByPath(path);
     for(const tag of noteTags(isFile(file)?app.metadataCache.getFileCache(file)?.frontmatter:null)) counts.set(tag,(counts.get(tag)||0)+1);
   }
-  const common=[...counts.keys()].filter(tag=>counts.get(tag)===selectedPaths.size);
-  return {common,partial:[...counts.keys()].filter(tag=>counts.get(tag)<selectedPaths.size),checked:[...common],counts:Object.fromEntries(counts),total:selectedPaths.size};
+  const common=[...counts.keys()].filter((tag)=>counts.get(tag)===selectedPaths.size);
+  return {common,partial:[...counts.keys()].filter((tag)=>counts.get(tag)!<selectedPaths.size),checked:[...common],counts:Object.fromEntries(counts),total:selectedPaths.size};
 };
 const deleteSelection=()=>{
   if(selectionBusy || !selectedPaths.size) return;
   closePopup();
-  const targets=[...selectedPaths].map(path=>{const file=app.vault.getAbstractFileByPath(path);return {path,file:isFile(file)?file:null};});
+  const targets=[...selectedPaths].map((path)=>{const file=app.vault.getAbstractFileByPath(path);return {path,file:isFile(file)?file:null};});
   const perform=async()=>{
     selectionBusy=true;updateSelection();
     try {
@@ -338,34 +326,35 @@ const deleteSelection=()=>{
 const confirmSelection=async()=>{
   if(selectionBusy || !selectedPaths.size || (!draftDirty() && moveDraft===null)) return;
   const before=takeSnap(),paths=[...selectedPaths],destination=moveDraft;
-  const add=draftDirty()?tagDraft.checked.filter(tag=>!tagDraft.common.includes(tag)):[];
-  const remove=draftDirty()?tagDraft.common.filter(tag=>!tagDraft.checked.includes(tag)):[];
+  const draft=tagDraft;
+  const add=draft && draftDirty()?draft.checked.filter((tag)=>!draft.common.includes(tag)):[];
+  const remove=draft && draftDirty()?draft.common.filter((tag)=>!draft.checked.includes(tag)):[];
   selectionBusy=true;closePopup();updateSelection();
   try {
     const tags=add.length||remove.length?await editNoteTags(app,paths,add,remove):{changed:0,errors:[],changes:[]};
-    /** @type {{moved:{from:string,to:string}[],errors:string[],folders?:{from:string,to:string}[]}} */
-    let moves={moved:[],errors:[]};
+
+    let moves: {moved:{from:string,to:string}[],errors:string[],folders?:{from:string,to:string}[]}={moved:[],errors:[]};
     if(destination!==null) {
       try {moves=await moveSelection(app,paths,[...selectedFolders],destination);} catch {moves.errors=paths;}
     }
-    const mapping=new Map(moves.moved.map(entry=>[entry.from,entry.to]));
-    /** @param {string} path */
-    const remap=path=>mapping.get(path)||path;
+    const mapping=new Map(moves.moved.map((entry)=>[entry.from,entry.to]));
+
+    const remap=(path: string)=>mapping.get(path)||path;
     // Tag history follows renamed notes; moving files itself is not a history action.
     before._tagChanges=tags.changes;
     for(const snapshot of [before,...S.undoStack,...S.redoStack]) {
       if(snapshot._selection) snapshot._selection.paths=snapshot._selection.paths.map(remap);
-      if(snapshot._selection?.folders) snapshot._selection.folders=snapshot._selection.folders.map(path=>{const folder=moves.folders?.find(entry=>path===entry.from || path.startsWith(entry.from+'/'));return folder?folder.to+path.slice(folder.from.length):path;});
+      if(snapshot._selection?.folders) snapshot._selection.folders=snapshot._selection.folders.map((path)=>{const folder=moves.folders?.find((entry)=>path===entry.from || path.startsWith(entry.from+'/'));return folder?folder.to+path.slice(folder.from.length):path;});
       for(const change of snapshot._tagChanges||[]) change.path=remap(change.path);
     }
     if(tags.changes.length) {S.undoStack.push(before);if(S.undoStack.length>UNDO_MAX) S.undoStack.shift();S.redoStack=[];}
     const errors=new Set([...tags.errors,...moves.errors]).size;
-    const numbered=moves.moved.filter(entry=>entry.from.split('/').pop()!==entry.to.split('/').pop()).length;
+    const numbered=moves.moved.filter((entry)=>entry.from.split('/').pop()!==entry.to.split('/').pop()).length;
     new Notice(msg("タグ変更 {0} 件・移動 {1} 件{2}{3}", [tags.changed, moves.moved.length, numbered?msg("（同名の {0} 件に連番を付与）", [numbered]):'', errors?msg("。{0} 件で適用できない変更がありました", [errors]):'']));
-    const failedFolders=[...selectedFolders].filter(folder=>moves.errors.includes(folder));
-    const failedPaths=paths.filter(path=>tags.errors.includes(path) || moves.errors.includes(path) || failedFolders.some(folder=>path.startsWith(folder+'/'))).map(remap);
-    selectedPaths.clear();failedPaths.forEach(path=>selectedPaths.add(path));
-    selectedFolders.clear();failedFolders.forEach(folder=>selectedFolders.add(folder));
+    const failedFolders=[...selectedFolders].filter((folder)=>moves.errors.includes(folder));
+    const failedPaths=paths.filter((path)=>tags.errors.includes(path) || moves.errors.includes(path) || failedFolders.some((folder)=>path.startsWith(folder+'/'))).map(remap);
+    selectedPaths.clear();failedPaths.forEach((path)=>selectedPaths.add(path));
+    selectedFolders.clear();failedFolders.forEach((folder)=>selectedFolders.add(folder));
     selectionMode=selectedPaths.size>0;tagDraft=null;moveDraft=null;
     revision++;pagesCache=null;S.tagCache=null;
   } finally {selectionBusy=false;if(!disposed) render();}
@@ -374,29 +363,29 @@ const editSelectionTags=()=>{
   if(selectionBusy || !selectedPaths.size) return;
   tagDraft=tagDraft||prepareTagDraft();
   const selected=new Set(tagDraft.checked);
-  openTagDropdown(/** @type {HTMLButtonElement|null} */ (selectionBar.querySelector('.kv-selection-edit')),'',()=>{},{onMultiSelect:checked=>{
-    tagDraft.checked=checked;updateSelection();
+  openTagDropdown( (selectionBar!.querySelector('.kv-selection-edit') as HTMLButtonElement),'',()=>{},{onMultiSelect:(checked)=>{
+    tagDraft!.checked=checked;updateSelection();
   },selected,disabled:new Set(tagDraft.partial),extraTags:[...tagDraft.common,...tagDraft.partial],counts:tagDraft.counts,total:tagDraft.total,beforeChange:pushUndo});
 };
-/** @type {number|undefined} */ let pageScrollTimer;
-document.addEventListener?.('scroll',event=>{
+ let pageScrollTimer: number|undefined;
+document.addEventListener?.('scroll',(event)=>{
   const target=event.target;
   if(target!==document && !(target instanceof window.Element && target!==container && target.contains(container))) return;
   container.classList.add('kv-page-scrolling');clearTimeout(pageScrollTimer);
   pageScrollTimer=setTimeout(()=>container.classList.remove('kv-page-scrolling'),180);
 },{capture:true,passive:true,signal:lifetime.signal});
-const layouts = new Set(/** @type {(()=>void)[]} */ ([]));
-/** @type {Page[]|null} */
-let pagesCache = null;
-const timers = new Set(/** @type {number[]} */ ([]));
-/** @param {()=>void} fn @param {number} delay */
-const setTimeout = (fn, delay) => { const id = window.setTimeout(() => { timers.delete(id); if (!disposed) fn(); }, delay); timers.add(id); return id; };
-/** @param {number|undefined|null} id */
-const clearTimeout = id => { window.clearTimeout(id); timers.delete(id); };
-/** @returns {Page[]} */
-const getPages = () => pagesCache || (pagesCache = app.vault.getMarkdownFiles().map(file => {
+const layouts = new Set( ([] as (()=>void)[]));
+
+let pagesCache: Page[]|null = null;
+const timers = new Set( ([] as number[]));
+
+const setTimeout = (fn: ()=>void, delay: number) => { const id = window.setTimeout(() => { timers.delete(id); if (!disposed) fn(); }, delay); timers.add(id); return id; };
+
+const clearTimeout = (id: number|undefined|null) => { window.clearTimeout(id ?? undefined); if(id!=null) timers.delete(id); };
+
+const getPages = (): Page[] => pagesCache || (pagesCache = app.vault.getMarkdownFiles().map((file) => {
   const cache = app.metadataCache.getFileCache(file);
-  const tags = new Set(/** @type {string[]} */ ([]));
+  const tags = new Set( ([] as string[]));
   for (const tag of (cache ? getAllTags(cache) || [] : [])) {
     const parts = tag.replace(/^#/, '').split('/');
     for (let i = 1; i <= parts.length; i++) tags.add('#' + parts.slice(0, i).join('/'));
@@ -405,15 +394,15 @@ const getPages = () => pagesCache || (pagesCache = app.vault.getMarkdownFiles().
   return {file:{path:file.path, name:file.basename, folder:file.parent?.path === '/' ? '' : file.parent?.path || '', tags:[...tags], mtime:file.stat.mtime, ctime:file.stat.ctime, property:parseIsoTimestamp(frontmatter[settings.dateProperty]),...(settings.showDateGuidance!==false && !dateGuidanceShown.has(settings.dateProperty)?{propertyPresent:Object.hasOwn(frontmatter,settings.dateProperty),metadataReady:cache!==null && cache!==undefined}:{})}};
 }));
 const refreshLater = () => scheduleRefresh();
-let renderedPagesKey=null,pendingRefresh=false,forceRefresh=false;
-const scheduleRefresh = (() => { /** @type {number|undefined} */ let timer=0; return () => { clearTimeout(timer); timer = setTimeout(()=>{
+let renderedPagesKey: string|null=null;let pendingRefresh=false,forceRefresh=false;
+const scheduleRefresh = (() => { let timer: number|undefined=0; return () => { clearTimeout(timer); timer = setTimeout(()=>{
   if(document.hidden || container.clientWidth===0 || container.isConnected===false) {pendingRefresh=true;return;}
   pendingRefresh=false;
   if(forceRefresh || JSON.stringify(getPages())!==renderedPagesKey) {forceRefresh=false;render();}
 },150); }; })();
 const resumeView=()=>{
   dragCleanup?.();dragCleanup=null;container.classList?.remove('kv-page-scrolling');
-  container.querySelectorAll?.('.kv-scroll-rail.is-dragging').forEach(el=>el.dispatchEvent(new window.Event('pointercancel')));
+  container.querySelectorAll?.('.kv-scroll-rail.is-dragging').forEach((el)=>el.dispatchEvent(new window.Event('pointercancel')));
   if(pendingRefresh) refreshLater();
 };
 document.addEventListener?.('visibilitychange',()=>{if(!document.hidden) resumeView();},{signal:lifetime.signal});
@@ -425,8 +414,7 @@ const UNDO_MAX      = 50;
 
 // 非同期競合防止：レンダリングのシーケンス番号
 
-/** @type {import('./lib/types').ViewState} */
-const S = {
+const S: ViewState = {
     searchTree      : { type: 'and', id: 'root', children: [] },
     formula         : '',
     formulaError    : '',
@@ -462,25 +450,22 @@ if (!Array.isArray(S.folderFilters)) S.folderFilters = [];
 if (!S.searchTree || !S.searchTree.type) S.searchTree = { type:'and', id:'root', children:[] };
 if (!S.searchTree.id) S.searchTree.id = 'root';
 
-/** @param {()=>void} fn @param {number} ms */
-const debounce = (fn, ms) => { /** @type {number|undefined} */ let t=0; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
+const debounce = (fn: ()=>void, ms: number) => { let t: number|undefined=0; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
 const genId    = () => Math.random().toString(36).slice(2, 8);
 
 // structuredClone with fallback
 const deepClone = clone;
 
-/** @param {unknown} val */
-const toMs = (val) => {
+const toMs = (val: unknown) => {
   if (val==null) return NaN;
   const object=record(val);
-  if (typeof object.toMillis === 'function') {const result=/** @type {()=>unknown} */ (object.toMillis).call(val);return typeof result==='number'?result:NaN;}
+  if (typeof object.toMillis === 'function') {const result= (object.toMillis as ()=>unknown).call(val);return typeof result==='number'?result:NaN;}
   if (typeof val==='object') {const result=val.valueOf();return typeof result==='number'?result:NaN;}
   if (typeof val === 'number') return val;
   return new Date(String(val)).getTime();
 };
 
-/** @param {unknown} val */
-const relDate = (val) => {
+const relDate = (val: unknown) => {
   const ms = toMs(val);
   if (!Number.isFinite(ms)) return '';
   const diff = Date.now() - ms;
@@ -497,37 +482,34 @@ const relDate = (val) => {
   return msg("{0}年前", [Math.floor(mo / 12)]);
 };
 
-/** @param {string} raw */
-const stripContent = (raw) => raw.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').replace(/!\[\[[^\]]+\]\]/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, /** @param {string} _ @param {string} target @param {string} alias */ (_, target, alias) => alias || target).replace(/[#*`>_~]/g, '').trim();
-/** @param {string} raw */
-const extractThumb = (raw) => { const wiki = raw.match(/!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/); const md = raw.match(/!\[[^\]]*\]\(<?([^>\s)]+)>?(?:\s+"[^"]*")?\)/); return wiki ? wiki[1] : md ? md[1] : null; };
+const stripContent = (raw: string) => raw.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').replace(/!\[\[[^\]]+\]\]/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,  (_: string, target: string, alias: string) => alias || target).replace(/[#*`>_~]/g, '').trim();
 
-/** @param {TagNode} tree @param {string} id @returns {{node:TagNode,parentArr:TagNode[]|null}|null} */
-const findById = (tree, id) => {
+const extractThumb = (raw: string) => { const wiki = raw.match(/!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/); const md = raw.match(/!\[[^\]]*\]\(<?([^>\s)]+)>?(?:\s+"[^"]*")?\)/); return wiki ? wiki[1] : md ? md[1] : null; };
+
+const findById = (tree: TagNode, id: string): {node:TagNode,parentArr:TagNode[]|null}|null => {
   if (tree.id === id) return { node: tree, parentArr: null };
-  /** @param {TagNode} node @param {TagNode[]} parentArr @returns {{node:TagNode,parentArr:TagNode[]}|null} */
-const search = (node, parentArr) => {
+
+const search = (node: TagNode, parentArr: TagNode[]): {node:TagNode,parentArr:TagNode[]}|null => {
     if (node.id === id) return { node, parentArr };
     for (const child of (node.children || [])) {
-      const r = search(child, node.children);
+      const r = search(child, node.children!);
       if (r) return r;
     }
     return null;
   };
   for (const child of (tree.children || [])) {
-    const r = search(child, tree.children);
+    const r = search(child, tree.children!);
     if (r) return r;
   }
   return null;
 };
 
-/** @param {string|null} parentId @param {TagNode} newNode */
-const addNode = (parentId, newNode) => {
+const addNode = (parentId: string|null, newNode: TagNode) => {
   const parent = findById(S.searchTree, parentId || S.searchTree.id)?.node;
   if (!parent?.children || (parent.type === 'not' && parent.children.length)) return;
   pushUndo();
   if (parentId === null || parentId === 'root' || parentId === S.searchTree.id) {
-    S.searchTree.children.push(newNode);
+    S.searchTree.children!.push(newNode);
   } else {
     const found = findById(S.searchTree, parentId);
     if (found && found.node.children !== undefined) {
@@ -538,8 +520,7 @@ const addNode = (parentId, newNode) => {
   render();
 };
 
-/** @param {string} id */
-const removeNode = (id) => {
+const removeNode = (id: string) => {
   pushUndo();
   const found = findById(S.searchTree, id);
   if (found && found.parentArr) {
@@ -550,8 +531,7 @@ const removeNode = (id) => {
   render();
 };
 
-/** @param {string} id @param {string} tag */
-const updateNodeTag = (id, tag) => {
+const updateNodeTag = (id: string, tag: string) => {
   pushUndo();
   const found = findById(S.searchTree, id);
   if (found) found.node.tag = tag;
@@ -559,8 +539,7 @@ const updateNodeTag = (id, tag) => {
   render();
 };
 
-/** @param {string} id @param {string} newType */
-const changeType = (id, newType) => {
+const changeType = (id: string, newType: string) => {
   pushUndo();
   const found = findById(S.searchTree, id);
   if (!found) return;
@@ -571,15 +550,15 @@ const changeType = (id, newType) => {
     node.type = newType; node.children = []; delete node.tag;
   } else {
     node.type = newType;
-    if (newType === 'not' && (node.children||[]).length > 1) node.children = [node.children[0]];
+    if (newType === 'not' && (node.children||[]).length > 1) node.children = [node.children![0]];
   }
   syncFormulaFromTree();
   render();
 };
 
 // ノードをルートの上または下に並列配置
-/** @param {string} nodeId @param {string} position */
-const moveToRootLevel = (nodeId, position) => {
+
+const moveToRootLevel = (nodeId: string, position: string) => {
   // position: 'before' | 'after'
   pushUndo();
   const found = findById(S.searchTree, nodeId);
@@ -606,12 +585,12 @@ const moveToRootLevel = (nodeId, position) => {
 };
 
 // 通常のノード移動
-/** @param {string} nodeId @param {string|null} destParentId @param {number} destIndex */
-const moveNode = (nodeId, destParentId, destIndex) => {
+
+const moveNode = (nodeId: string, destParentId: string|null, destIndex: number) => {
   const source = findById(S.searchTree, nodeId);
   const destination = findById(S.searchTree, destParentId || S.searchTree.id);
   if (!source?.parentArr || !destination?.node.children || findById(source.node, destination.node.id)) return;
-  if (destination.node.type === 'not' && destination.node.children.length && !destination.node.children.some(n => n.id === nodeId)) return;
+  if (destination.node.type === 'not' && destination.node.children.length && !destination.node.children.some((n) => n.id === nodeId)) return;
   pushUndo();
   const src = findById(S.searchTree, nodeId);
   if (!src || !src.parentArr) return;
@@ -622,7 +601,7 @@ const moveNode = (nodeId, destParentId, destIndex) => {
 
   let destArr;
   if (destParentId === null || destParentId === S.searchTree.id) {
-    destArr = S.searchTree.children;
+    destArr = S.searchTree.children!;
   } else {
     const destFound = findById(S.searchTree, destParentId);
     if (!destFound) return;
@@ -638,29 +617,29 @@ const moveNode = (nodeId, destParentId, destIndex) => {
   render();
 };
 
-const SNAP_KEYS = /** @type {const} */ (['searchTree','formula','textQuery','dateField','sortField','sortOrder','dateFrom','dateTo','noTagOnly','density','previewChars','folderFilters','groupByFolder']);
-/** @returns {Snapshot} */
-const takeSnap = () => {
-  const s=/** @type {Snapshot} */ (takeSaved());
+const SNAP_KEYS =  (['searchTree','formula','textQuery','dateField','sortField','sortOrder','dateFrom','dateTo','noTagOnly','density','previewChars','folderFilters','groupByFolder'] as const);
+
+const takeSnap = (): Snapshot => {
+  const s= (takeSaved() as Snapshot);
   s._selection={mode:selectionMode,paths:[...selectedPaths],folders:[...selectedFolders],draft:deepClone(tagDraft),destination:moveDraft};return s;
 };
-/** @param {Snapshot} s */
-const applySnap = s => {
-  Object.assign(S,Object.fromEntries(SNAP_KEYS.filter(k=>s[k]!==undefined).map(k=>[k,s[k]])));S.formulaError='';
+
+const applySnap = (s: Snapshot) => {
+  Object.assign(S,Object.fromEntries(SNAP_KEYS.filter((k)=>s[k]!==undefined).map((k)=>[k,s[k]])));S.formulaError='';
   if(s._selection) {
-    selectionMode=s._selection.mode;selectedPaths.clear();s._selection.paths.forEach(path=>selectedPaths.add(path));
-    selectedFolders.clear();(s._selection.folders||[]).forEach(path=>selectedFolders.add(path));
+    selectionMode=s._selection.mode;selectedPaths.clear();s._selection.paths.forEach((path)=>selectedPaths.add(path));
+    selectedFolders.clear();(s._selection.folders||[]).forEach((path)=>selectedFolders.add(path));
     tagDraft=deepClone(s._selection.draft);moveDraft=s._selection.destination??null;
   }
 };
 const pushUndo = () => {S.undoStack.push(takeSnap());if(S.undoStack.length>UNDO_MAX) S.undoStack.shift();S.redoStack=[];};
-/** @param {Snapshot[]} from @param {Snapshot[]} to */
-const travelHistory = (from,to) => {
+
+const travelHistory = (from: Snapshot[],to: Snapshot[]) => {
   if(selectionBusy || !from.length) return;
-  const snapshot=from.pop(),inverse=takeSnap();
+  const snapshot=from.pop()!,inverse=takeSnap();
   if(!snapshot._tagChanges) {to.push(inverse);applySnap(snapshot);render();return;}
   selectionBusy=true;closePopup();updateSelection();
-  return restoreTagChanges(app,snapshot._tagChanges).then(report=>{
+  return restoreTagChanges(app,snapshot._tagChanges).then((report)=>{
     if(report.inverse.length) {inverse._tagChanges=report.inverse;to.push(inverse);applySnap(snapshot);}
     if(report.errors.length) new Notice(msg("{0} 件はタグの変更・削除などにより戻せませんでした", [report.errors.length]));
     revision++;pagesCache=null;S.tagCache=null;
@@ -672,9 +651,9 @@ const doRedo = () => travelHistory(S.redoStack,S.undoStack);
 const refreshTagCache = () => {
   const rev = revision;
   if (S.tagRevision === rev && S.tagCache) return;
-  /** @type {Record<string,number>} */ const counts = dictionary();
-  getPages().forEach(p => {
-    (p.file.tags || []).forEach(t => {
+   const counts: Record<string,number> = dictionary();
+  getPages().forEach((p) => {
+    (p.file.tags || []).forEach((t) => {
       const tag = String(t).replace(/^#/, '');
       counts[tag] = (counts[tag] ?? 0) + 1;
     });
@@ -683,11 +662,11 @@ const refreshTagCache = () => {
 };
 
 const buildFolderTree = () => {
-  /** @type {Record<string,import('./lib/types').FolderNode>} */ const root = dictionary();
-  getPages().forEach(p => {
+   const root: Record<string,FolderNode> = dictionary();
+  getPages().forEach((p) => {
     const parts = p.file.folder.split('/').filter(Boolean);
     let node = root; let path = '';
-    parts.forEach(part => {
+    parts.forEach((part) => {
       path = path ? path+'/'+part : part;
       if (!node[part]) node[part] = { name:part, path, children:dictionary() };
       node = node[part].children;
@@ -696,8 +675,7 @@ const buildFolderTree = () => {
   return root;
 };
 
-/** @param {TagNode} node @param {boolean} isRoot @returns {string} */
-const nodeToFormula = (node, isRoot) => {
+const nodeToFormula = (node: TagNode, isRoot: boolean): string => {
   if (!node) return '';
   const t = node.type;
   if (t === 'tag') return node.tag ? '#' + node.tag.replace(/^#/,'') : '';
@@ -707,13 +685,13 @@ const nodeToFormula = (node, isRoot) => {
     return 'NOT ' + (child.type==='and'||child.type==='or' ? '('+inner+')' : inner);
   }
   if (t === 'and') {
-    const parts = (node.children||[]).map(c=>nodeToFormula(c,false)).filter(Boolean);
+    const parts = (node.children||[]).map((c)=>nodeToFormula(c,false)).filter(Boolean);
     if (!parts.length) return '';
     if (parts.length === 1) return parts[0];
     return isRoot ? parts.join(' AND ') : '(' + parts.join(' AND ') + ')';
   }
   if (t === 'or') {
-    const parts = (node.children||[]).map(c=>nodeToFormula(c,false)).filter(Boolean);
+    const parts = (node.children||[]).map((c)=>nodeToFormula(c,false)).filter(Boolean);
     if (!parts.length) return '';
     if (parts.length === 1) return parts[0];
     return isRoot ? parts.join(' OR ') : '(' + parts.join(' OR ') + ')';
@@ -724,8 +702,7 @@ const nodeToFormula = (node, isRoot) => {
 const treeToFormula   = () => nodeToFormula(S.searchTree, true);
 const syncFormulaFromTree = () => { S.formula = treeToFormula(); S.formulaError = ''; };
 
-/** @param {string} str @returns {Token[]} */
-const tokenize = (str) => {
+const tokenize = (str: string): Token[] => {
   const t=[]; let i=0;
   while(i<str.length){
     if(/\s/.test(str[i])){i++;continue;}
@@ -741,11 +718,9 @@ const tokenize = (str) => {
   return t;
 };
 
-/** @param {TagNode} node @returns {TagNode} */
-const ensureId = (node) => { if(!node.id) node.id=genId(); if(node.children) node.children=node.children.map(ensureId); return node; };
+const ensureId = (node: TagNode): TagNode => { if(!node.id) node.id=genId(); if(node.children) node.children=node.children.map(ensureId); return node; };
 
-/** @param {string} input @returns {TagNode} */
-const parseFormula = (input) => {
+const parseFormula = (input: string): TagNode => {
   const str = input.trim();
   if (!str) return { type:'and', id:'root', children:[] };
   const tokens = tokenize(str);
@@ -756,49 +731,44 @@ const parseFormula = (input) => {
     : ensureId(result.node);
 };
 
-/** @param {Token[]} t @param {number} p @returns {ParsedNode} */
-const parseOr=(t,p)=>{let{node:l,pos:p2}=parseAnd(t,p);while(p2<t.length&&t[p2].type==='OR'){p2++;const{node:r,pos:p3}=parseAnd(t,p2);p2=p3;l=l.type==='or'?{type:'or',id:genId(),children:[...l.children,r]}:{type:'or',id:genId(),children:[l,r]};}return{node:l,pos:p2};};
-/** @param {Token[]} t @param {number} p @returns {ParsedNode} */
-const parseAnd=(t,p)=>{let{node:l,pos:p2}=parseNot(t,p);while(p2<t.length&&t[p2].type==='AND'){p2++;const{node:r,pos:p3}=parseNot(t,p2);p2=p3;l=l.type==='and'?{type:'and',id:genId(),children:[...l.children,r]}:{type:'and',id:genId(),children:[l,r]};}return{node:l,pos:p2};};
-/** @param {Token[]} t @param {number} p @returns {ParsedNode} */
-const parseNot=(t,p)=>{if(p<t.length&&t[p].type==='NOT'){const{node:c,pos:p2}=parseNot(t,p+1);return{node:{type:'not',id:genId(),children:[c]},pos:p2};}return parsePrimary(t,p);};
-/** @param {Token[]} t @param {number} p @returns {ParsedNode} */
-const parsePrimary=(t,p)=>{if(p>=t.length)throw new Error(msg("式が不完全です"));if(t[p].type==='LPAREN'){const{node,pos:p2}=parseOr(t,p+1);if(p2>=t.length||t[p2].type!=='RPAREN')throw new Error(msg(") が不足しています"));return{node,pos:p2+1};}if(t[p].type==='TAG')return{node:{type:'tag',id:genId(),tag:t[p].value},pos:p+1};throw new Error(msg("予期しないトークン: {0}", [t[p].type]));};
+const parseOr=(t: Token[],p: number): ParsedNode=>{let{node:l,pos:p2}=parseAnd(t,p);while(p2<t.length&&t[p2].type==='OR'){p2++;const{node:r,pos:p3}=parseAnd(t,p2);p2=p3;l=l.type==='or'?{type:'or',id:genId(),children:[...l.children!,r]}:{type:'or',id:genId(),children:[l,r]};}return{node:l,pos:p2};};
 
-/** @param {string} str */
-const syncTreeFromFormula = (str) => {
+const parseAnd=(t: Token[],p: number): ParsedNode=>{let{node:l,pos:p2}=parseNot(t,p);while(p2<t.length&&t[p2].type==='AND'){p2++;const{node:r,pos:p3}=parseNot(t,p2);p2=p3;l=l.type==='and'?{type:'and',id:genId(),children:[...l.children!,r]}:{type:'and',id:genId(),children:[l,r]};}return{node:l,pos:p2};};
+
+const parseNot=(t: Token[],p: number): ParsedNode=>{if(p<t.length&&t[p].type==='NOT'){const{node:c,pos:p2}=parseNot(t,p+1);return{node:{type:'not',id:genId(),children:[c]},pos:p2};}return parsePrimary(t,p);};
+
+const parsePrimary=(t: Token[],p: number): ParsedNode=>{if(p>=t.length)throw new Error(msg("式が不完全です"));if(t[p].type==='LPAREN'){const{node,pos:p2}=parseOr(t,p+1);if(p2>=t.length||t[p2].type!=='RPAREN')throw new Error(msg(") が不足しています"));return{node,pos:p2+1};}if(t[p].type==='TAG')return{node:{type:'tag',id:genId(),tag:t[p].value},pos:p+1};throw new Error(msg("予期しないトークン: {0}", [t[p].type]));};
+
+const syncTreeFromFormula = (str: string) => {
   try { S.searchTree=parseFormula(str); S.formulaError=''; }
   catch(e) { S.formulaError=errorMessage(e); }
 };
 
-/** @param {TagNode} node @param {string[]} tags @returns {boolean} */
-const evalNode = (node, tags) => {
+const evalNode = (node: TagNode, tags: string[]): boolean => {
   if (!node) return true;
   const t = node.type;
-  if (t==='and') return (node.children||[]).every(c=>evalNode(c,tags));
-  if (t==='tag') { const tag=(node.tag||'').replace(/^#/,'').toLowerCase(); return tags.some(pt=>pt.replace(/^#/,'').toLowerCase()===tag); }
-  if (t==='not') return !(node.children||[]).some(c=>evalNode(c,tags));
-  if (t==='or')  return (node.children||[]).some(c=>evalNode(c,tags));
+  if (t==='and') return (node.children||[]).every((c)=>evalNode(c,tags));
+  if (t==='tag') { const tag=(node.tag||'').replace(/^#/,'').toLowerCase(); return tags.some((pt)=>pt.replace(/^#/,'').toLowerCase()===tag); }
+  if (t==='not') return !(node.children||[]).some((c)=>evalNode(c,tags));
+  if (t==='or')  return (node.children||[]).some((c)=>evalNode(c,tags));
   return true;
 };
 
-/** @param {Page} p @returns {import("./lib/types").ContentEntry} */
-const getContent = (p) => {
+const getContent = (p: Page): ContentEntry => {
   const key = p.file.path + '::' + p.file.mtime;
   if (S.contentCache[key]) return S.contentCache[key];
-  const entry = /** @type {import("./lib/types").ContentEntry} */ ({summary:'', thumb:null, loading:true,promise:Promise.resolve()});
+  const entry =  ({summary:'', thumb:null, loading:true,promise:Promise.resolve()} as ContentEntry);
   S.contentCache[key] = entry;
   const file = app.vault.getAbstractFileByPath(p.file.path);
-  entry.promise = (isFile(file) ? app.vault.cachedRead(file) : Promise.resolve('')).then(raw => {
+  entry.promise = (isFile(file) ? app.vault.cachedRead(file) : Promise.resolve('')).then((raw) => {
     entry.summary = stripContent(raw); entry.markdown = markdownBody(raw); entry.thumb = extractThumb(raw);
   }).catch(() => { entry.summary = msg("プレビューを読み込めませんでした"); }).finally(() => { entry.loading = false; });
   return entry;
 };
 
-/** @type {Popup|null} */
-let _activePopup    = null;
-/** @type {AbortController|null} */
-let _activeAbortCtrl = null;
+let _activePopup: Popup|null    = null;
+
+let _activeAbortCtrl: AbortController|null = null;
 
 const closePopup = () => {
   _activePopup?._cleanup?.();
@@ -806,10 +776,9 @@ const closePopup = () => {
   if (_activeAbortCtrl) { _activeAbortCtrl.abort(); _activeAbortCtrl = null; }
 };
 
-/** @param {HTMLElement} anchorEl @param {(popup:Popup)=>void} buildFn @param {{minWidth?:string}} opts @returns {Popup} */
-const openPopup = (anchorEl, buildFn, opts={}) => {
+const openPopup = (anchorEl: HTMLElement, buildFn: (popup:Popup)=>void, opts: {minWidth?:string}={}): Popup => {
   closePopup();
-  const popup = /** @type {Popup} */ ((anchorEl.closest('.modal') || document.body).createDiv({cls:'keep-view-root kv-dropdown'}));
+  const popup =  ((anchorEl.closest('.modal') || document.body).createDiv({cls:'keep-view-root kv-dropdown'}) as Popup);
   if (opts.minWidth) popup.style.minWidth = opts.minWidth;
   _activePopup = popup;
   buildFn(popup);
@@ -875,7 +844,7 @@ const openPopup = (anchorEl, buildFn, opts={}) => {
   popup.addEventListener('focusin',()=>{
     viewportResized();
   },{signal:ctrl.signal});
-  document.addEventListener('keydown', e => { if (e.key==='Escape') { closePopup(); popup._anchor?.focus(); } }, {signal:ctrl.signal});
+  document.addEventListener('keydown', (e) => { if (e.key==='Escape') { closePopup(); popup._anchor?.focus(); } }, {signal:ctrl.signal});
   position();
   setTimeout(() => {
     document.addEventListener('pointerdown', (e) => {
@@ -886,18 +855,17 @@ const openPopup = (anchorEl, buildFn, opts={}) => {
   return popup;
 };
 
-/** @param {HTMLElement} anchorEl @param {string} currentTag @param {(tag:string)=>void} onSelect @param {{selected?:Set<string>,disabled?:Set<string>,extraTags?:string[],counts?:Record<string,number>,total?:number,beforeChange?:()=>void,apply?:()=>void,onMultiSelect?:(tags:string[])=>void}} options */
-const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
+const openTagDropdown = (anchorEl: HTMLElement, currentTag: string|undefined, onSelect: (tag:string)=>void, options: {selected?:Set<string>,disabled?:Set<string>,extraTags?:string[],counts?:Record<string,number>,total?:number,beforeChange?:()=>void,apply?:()=>void,onMultiSelect?:(tags:string[])=>void}={}) => {
   if(options.selected) {
-    const tags=new Set([...options.selected,...(options.disabled||[]),...Object.keys(options.counts||{}).filter(tag=>options.counts[tag]>0)]);
+    const tags=new Set([...options.selected,...(options.disabled||[]),...Object.keys(options.counts||{}).filter((tag)=>options.counts![tag]>0)]);
     for(const tag of tags) {const parts=tag.split('/');for(let i=1;i<=parts.length;i++) S.tagGroupState[parts.slice(0,i).join('/')]=true;}
   }
   openPopup(anchorEl, (popup) => {
     const searchInput = popup.createEl('input', {cls:'kv-dropdown-search', type:'text', placeholder:msg("タグを検索...")});
     const listEl = popup.createDiv();
-    /** @type {HTMLButtonElement|null} */ let applyButton=null;
-    /** @param {string} tag */
-    const choose=tag=>{
+     let applyButton: HTMLButtonElement|null=null;
+
+    const choose=(tag: string)=>{
       if(options.disabled?.has(tag)) return;
       options.beforeChange?.();
       if(options.selected) {
@@ -906,24 +874,23 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
         if(applyButton) applyButton.disabled=!options.selected.size;
       } else {onSelect(tag);closePopup();}
     };
-    /** @param {HTMLElement} row @param {string} tag */
-    const mark=(row,tag)=>{
+
+    const mark=(row: HTMLElement,tag: string)=>{
       if(!options.selected) return;
       const check=dropdownCheckbox(row,{label:tag,checked:options.selected.has(tag)});
       check.disabled=options.disabled?.has(tag)||false;
       if(check.disabled) check.checked=true;
       row.classList.toggle('is-partial',check.disabled);
-      check.setAttribute('aria-label',tag);check.onclick=event=>{event.stopPropagation();choose(tag);};
+      check.setAttribute('aria-label',tag);check.onclick=(event)=>{event.stopPropagation();choose(tag);};
       row.classList.toggle('is-selected',check.checked);
       const count=options.counts && Object.hasOwn(options.counts,tag)?options.counts[tag]:0;
       if(count>0) row.createSpan({cls:'kv-tag-count',text:msg("{0}/{1}", [count, options.total])});
     };
 
-    /** @param {HTMLElement} container @param {string} prefix @param {number} depth @param {string} filterText */
-    const renderTagNode = (container, prefix, depth, filterText) => {
+    const renderTagNode = (container: HTMLElement, prefix: string, depth: number, filterText: string) => {
       const all = [...new Set([...Object.keys(S.tagCache||{}),...(options.extraTags||[])])].sort();
-      /** @type {Record<string,string[]>} */ const groups = dictionary(); const leaves = /** @type {string[]} */ ([]);
-      all.forEach(tag => {
+       const groups: Record<string,string[]> = dictionary(); const leaves =  ([] as string[]);
+      all.forEach((tag) => {
         if (filterText && !tag.toLowerCase().includes(filterText.toLowerCase())) return;
         if (prefix) {
           if (!tag.startsWith(prefix+'/')) return;
@@ -936,7 +903,7 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
         }
       });
 
-      Object.keys(groups).sort().forEach(groupPath => {
+      Object.keys(groups).sort().forEach((groupPath) => {
         const isOpen = S.tagGroupState[groupPath] ?? false;
         const row = container.createDiv({cls:'kv-dropdown-item is-group'});
         mark(row,groupPath);
@@ -946,18 +913,18 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
         label.onclick = (e) => { e.stopPropagation(); choose(groupPath); };
         toggle.onclick = (e) => {
           e.stopPropagation();
-          animateDisclosure(toggle,!toggle.classList.contains('is-open'),open=>{S.tagGroupState[groupPath]=open;listEl.empty();renderTagNode(listEl,'',0,filterText);});
+          animateDisclosure(toggle,!toggle.classList.contains('is-open'),(open)=>{S.tagGroupState[groupPath]=open;listEl.empty();renderTagNode(listEl,'',0,filterText);});
         };
         // グループ行クリックでもトグル（トグルボタンの判定を広げる）
         row.onclick = (e) => {
           if (e.target === toggle) return;
           e.stopPropagation();
-          animateDisclosure(toggle,!toggle.classList.contains('is-open'),open=>{S.tagGroupState[groupPath]=open;listEl.empty();renderTagNode(listEl,'',0,filterText);});
+          animateDisclosure(toggle,!toggle.classList.contains('is-open'),(open)=>{S.tagGroupState[groupPath]=open;listEl.empty();renderTagNode(listEl,'',0,filterText);});
         };
         if (isOpen || filterText) renderTagNode(container, groupPath, depth+1, filterText);
       });
 
-      leaves.forEach(tag => {
+      leaves.forEach((tag) => {
         const row = container.createDiv({cls:'kv-dropdown-item'});
         mark(row,tag);
         for(let i=0;i<depth;i++) row.createSpan({cls:'kv-dropdown-indent'});
@@ -971,8 +938,7 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
       }
     };
 
-    /** @param {string} filter */
-    const renderList = (filter) => { listEl.empty(); renderTagNode(listEl,'',0,filter); };
+    const renderList = (filter: string) => { listEl.empty(); renderTagNode(listEl,'',0,filter); };
     renderList('');
     if(options.apply) {
       applyButton=popup.createEl('button',{cls:'kv-btn kv-tag-apply',text:msg("追加する")});
@@ -984,26 +950,24 @@ const openTagDropdown = (anchorEl, currentTag, onSelect, options={}) => {
   });
 };
 
-/** @param {HTMLElement} anchorEl */
-const openFolderDropdown = (anchorEl) => {
-  /** @type {Popup|null} */
-  let popupEl = null;
+const openFolderDropdown = (anchorEl: HTMLElement) => {
+
+  let popupEl: Popup|null = null;
 
   const rebuild = () => { if (!popupEl) return; popupEl.empty(); buildContent(popupEl); };
 
-  /** @param {HTMLElement} container */
-  const buildContent = (container) => {
+  const buildContent = (container: HTMLElement) => {
     const folderTree = buildFolderTree();
 
     // 全フォルダパスを収集（再帰）
-    /** @param {import("./lib/types").FolderNode} nodeObj @returns {string[]} */
-    const getAllPaths = (nodeObj) => {
+
+    const getAllPaths = (nodeObj: FolderNode): string[] => {
       const paths = [nodeObj.path];
-      Object.values(nodeObj.children).forEach(child => paths.push(...getAllPaths(child)));
+      Object.values(nodeObj.children).forEach((child) => paths.push(...getAllPaths(child)));
       return paths;
     };
-    const allPaths = ['',...Object.values(folderTree).flatMap(n => getAllPaths(n))];
-    const allSelected = allPaths.every(p => S.folderFilters.includes(p));
+    const allPaths = ['',...Object.values(folderTree).flatMap((n) => getAllPaths(n))];
+    const allSelected = allPaths.every((p) => S.folderFilters.includes(p));
 
     // すべて選択/解除
     const allRow = container.createDiv({cls:'kv-dropdown-item'+(S.folderFilters.length===0?' is-selected':'')});
@@ -1017,21 +981,20 @@ const openFolderDropdown = (anchorEl) => {
     };
 
     const {item:rootRow} = folderDropdownRow(container,{name:msg("(ルート)"),selected:S.folderFilters.includes('')});
-    rootRow.onclick = (e) => { e.stopPropagation(); pushUndo(); S.folderFilters = S.folderFilters.includes('') ? S.folderFilters.filter(p => p !== '') : [...S.folderFilters, '']; S.limit=PAGE_SIZE; rebuild(); render(); };
+    rootRow.onclick = (e) => { e.stopPropagation(); pushUndo(); S.folderFilters = S.folderFilters.includes('') ? S.folderFilters.filter((p) => p !== '') : [...S.folderFilters, '']; S.limit=PAGE_SIZE; rebuild(); render(); };
 
-    /** @param {import("./lib/types").FolderNode} nodeObj @param {number} depth */
-    const renderFolderNode = (nodeObj, depth) => {
+    const renderFolderNode = (nodeObj: FolderNode, depth: number) => {
       const hasChildren = Object.keys(nodeObj.children).length > 0;
       const isOpen = S.folderGroupState[nodeObj.path] ?? false;
       const isSelected = S.folderFilters.includes(nodeObj.path);
       // 子パスを全取得
       const childPaths = hasChildren
-        ? Object.values(nodeObj.children).flatMap(c => getAllPaths(c))
+        ? Object.values(nodeObj.children).flatMap((c) => getAllPaths(c))
         : [];
 
       const {item,toggle}=folderDropdownRow(container,{name:nodeObj.name,selected:isSelected,depth,children:hasChildren,open:isOpen});
 
-      if(hasChildren) toggle.onclick = (e) => { e.stopPropagation();animateDisclosure(toggle,!toggle.classList.contains('is-open'),open=>{S.folderGroupState[nodeObj.path]=open;rebuild();}); };
+      if(hasChildren) toggle.onclick = (e) => { e.stopPropagation();animateDisclosure(toggle,!toggle.classList.contains('is-open'),(open)=>{S.folderGroupState[nodeObj.path]=open;rebuild();}); };
 
       item.onclick = (e) => {
         e.stopPropagation();
@@ -1040,12 +1003,12 @@ const openFolderDropdown = (anchorEl) => {
         const idx = S.folderFilters.indexOf(nodeObj.path);
         if (idx !== -1) {
           // 解除：自身と子孫を全解除
-          S.folderFilters = S.folderFilters.filter(p =>
+          S.folderFilters = S.folderFilters.filter((p) =>
             p !== nodeObj.path && !childPaths.includes(p)
           );
         } else {
           // 選択：自身と子孫を全選択
-          const toAdd = [nodeObj.path, ...childPaths].filter(p => !S.folderFilters.includes(p));
+          const toAdd = [nodeObj.path, ...childPaths].filter((p) => !S.folderFilters.includes(p));
           S.folderFilters.push(...toAdd);
         }
         S.limit=PAGE_SIZE; rebuild(); render();
@@ -1054,21 +1017,20 @@ const openFolderDropdown = (anchorEl) => {
       if (hasChildren && isOpen) {
         Object.values(nodeObj.children)
           .sort((a,b)=>a.name.localeCompare(b.name))
-          .forEach(child=>renderFolderNode(child, depth+1));
+          .forEach((child)=>renderFolderNode(child, depth+1));
       }
     };
 
     Object.values(folderTree)
       .sort((a,b)=>a.name.localeCompare(b.name))
-      .forEach(node=>renderFolderNode(node, 0));
+      .forEach((node)=>renderFolderNode(node, 0));
   };
 
   popupEl = openPopup(anchorEl, buildContent, {minWidth:'240px'});
   popupEl._isFolderDropdown = true;
 };
 
-/** @param {HTMLElement} anchorEl @param {string} nodeId @param {string} currentType @param {boolean} isRoot */
-const openTypePopup = (anchorEl, nodeId, currentType, isRoot) => {
+const openTypePopup = (anchorEl: HTMLElement, nodeId: string|null, currentType: string, isRoot: boolean) => {
   openPopup(anchorEl, (popup) => {
     popup.classList.add('kv-type-popup');
     [{type:'tag',label:'TAG',cls:'kv-node-type-tag'},{type:'and',label:'AND',cls:'kv-node-type-and'},
@@ -1081,29 +1043,27 @@ const openTypePopup = (anchorEl, nodeId, currentType, isRoot) => {
           e.stopPropagation();
           closePopup();
           if (isRoot) changeType(S.searchTree.id, type);
-          else changeType(nodeId, type);
+          else changeType(nodeId!, type);
         };
     });
   });
 };
 
 // zones: { lineEl, parentId, index, isRootLevel }
-/** @typedef {{lineEl:HTMLElement,parentId:string|null,index:number,isRootLevel:boolean}} DropZone */
-const _zones = /** @type {DropZone[]} */ ([]);
+type DropZone = {lineEl:HTMLElement,parentId:string|null,index:number,isRootLevel:boolean};
+const _zones =  ([] as DropZone[]);
 const clearZones = () => { _zones.length = 0; };
-/** @param {HTMLElement} lineEl @param {string|null} parentId @param {number} index @param {boolean} isRootLevel */
-const registerZone = (lineEl, parentId, index, isRootLevel=false) => {
+
+const registerZone = (lineEl: HTMLElement, parentId: string|null, index: number, isRootLevel: boolean=false) => {
   _zones.push({lineEl, parentId, index, isRootLevel});
 };
 
-/** @type {HTMLElement|null} */
-let _activeLine = null;
+let _activeLine: HTMLElement|null = null;
 const clearHighlight = () => { if(_activeLine){_activeLine.classList.remove('is-visible');_activeLine=null;} };
 
-/** @param {number} clientY @returns {DropZone|null} */
-const getNearestZone = (clientY) => {
-  /** @type {DropZone|null} */ let best=null;let bestDist=Infinity;
-  _zones.forEach(z=>{
+const getNearestZone = (clientY: number): DropZone|null => {
+   let best: DropZone|null=null;let bestDist=Infinity;
+  _zones.forEach((z)=>{
     const r = z.lineEl.getBoundingClientRect();
     const cy = r.top + r.height/2;
     const dist = Math.abs(clientY-cy);
@@ -1112,13 +1072,12 @@ const getNearestZone = (clientY) => {
   return bestDist < 60 ? best : null;
 };
 
-/** @param {HTMLElement} handleEl @param {string} nodeId */
-const setupDragHandle = (handleEl, nodeId) => {
+const setupDragHandle = (handleEl: HTMLElement, nodeId: string) => {
   handleEl.addEventListener('pointerdown', (e) => {
     if (e.button!==0) return;
     e.preventDefault(); e.stopPropagation();
     handleEl.setPointerCapture(e.pointerId);
-    const row = handleEl.closest('.kv-node-row');
+    const row = handleEl.closest('.kv-node-row')!;
 
     const srcFound = findById(S.searchTree, nodeId);
     if (!srcFound) return;
@@ -1127,20 +1086,18 @@ const setupDragHandle = (handleEl, nodeId) => {
     ghost.textContent = srcFound.node.type==='tag' ? ('#'+(srcFound.node.tag||'?')) : msg(srcFound.node.type.toUpperCase());
     document.body.appendChild(ghost);
 
-    /** @param {number} cx @param {number} cy */
-    const upd = (cx,cy) => { ghost.style.left=(cx+12)+'px'; ghost.style.top=(cy-10)+'px'; };
+    const upd = (cx: number,cy: number) => { ghost.style.left=(cx+12)+'px'; ghost.style.top=(cy-10)+'px'; };
     upd(e.clientX, e.clientY);
     row.classList.add('is-dragging');
 
-    /** @param {PointerEvent} e */
-    const onMove = (e) => {
+    const onMove = (e: PointerEvent) => {
       upd(e.clientX, e.clientY);
       clearHighlight();
       const z = getNearestZone(e.clientY);
       if (z) { z.lineEl.classList.add('is-visible'); _activeLine=z.lineEl; }
     };
-    /** @param {PointerEvent} e */
-    const onUp = (e) => {
+
+    const onUp = (e: PointerEvent) => {
       dragCleanup?.();
       dragCleanup = null;
       if (e.type !== 'pointerup') return;
@@ -1166,10 +1123,9 @@ const setupDragHandle = (handleEl, nodeId) => {
   });
 };
 
-window.addEventListener?.('blur',()=>{dragCleanup?.();dragCleanup=null;container.querySelectorAll('.kv-scroll-rail.is-dragging').forEach(el=>el.dispatchEvent(new window.Event('pointercancel')));},{signal:lifetime.signal});
+window.addEventListener?.('blur',()=>{dragCleanup?.();dragCleanup=null;container.querySelectorAll('.kv-scroll-rail.is-dragging').forEach((el)=>el.dispatchEvent(new window.Event('pointercancel')));},{signal:lifetime.signal});
 
-/** @param {HTMLElement} container @param {string|null} parentId @param {string} parentType */
-const renderAddBtn = (container, parentId, parentType) => {
+const renderAddBtn = (container: HTMLElement, parentId: string|null, parentType: string) => {
   const addRow = container.createDiv({cls:'kv-add-row'});
   const indCls = parentType ? `kv-add-indicator-${parentType}` : 'kv-add-indicator-root';
   addRow.createSpan({cls:`kv-add-indicator ${indCls}`});
@@ -1178,8 +1134,7 @@ const renderAddBtn = (container, parentId, parentType) => {
   addBtn.createSpan({text:msg('追加')});
   if(parentType==='not') addBtn.setAttribute('aria-label',msg('NOTの対象を追加'));
 
-  /** @type {HTMLElement|null} */
-  let menuEl = null;
+  let menuEl: HTMLElement|null = null;
   addBtn.onclick = (e) => {
     e.stopPropagation();
     if (menuEl) { menuEl.remove(); menuEl=null; return; }
@@ -1187,10 +1142,10 @@ const renderAddBtn = (container, parentId, parentType) => {
     [{type:'tag',label:'TAG',cls:'kv-node-type-tag'},{type:'and',label:'AND',cls:'kv-node-type-and'},
      {type:'or',label:'OR',cls:'kv-node-type-or'},{type:'not',label:'NOT',cls:'kv-node-type-not'}]
     .forEach(({type,label,cls}) => {
-      menuEl.createSpan({cls:`kv-node-type ${cls}`,text:label})
+      menuEl!.createSpan({cls:`kv-node-type ${cls}`,text:label})
         .onclick = (e) => {
           e.stopPropagation();
-          const n = /** @type {TagNode} */ ({type, id:genId()});
+          const n =  ({type, id:genId()} as TagNode);
           if (type==='tag') n.tag=''; else n.children=[];
           addNode(parentId, n);
         };
@@ -1199,8 +1154,7 @@ const renderAddBtn = (container, parentId, parentType) => {
   };
 };
 
-/** @param {HTMLElement} container @param {TagNode} node @param {string|null} parentId @param {number} insertIndex */
-const renderTreeNode = (container, node, parentId, insertIndex) => {
+const renderTreeNode = (container: HTMLElement, node: TagNode, parentId: string|null, insertIndex: number) => {
   const dl = container.createDiv({cls:'kv-drop-line'});
   registerZone(dl, parentId, insertIndex);
 
@@ -1221,7 +1175,7 @@ const renderTreeNode = (container, node, parentId, insertIndex) => {
     });
     tagBtn.onclick = (e) => {
       e.stopPropagation();
-      openTagDropdown(tagBtn, node.tag, (tag) => updateNodeTag(nodeId, tag));
+      openTagDropdown(tagBtn, node.tag || '', (tag) => updateNodeTag(nodeId, tag));
     };
   }
 
@@ -1244,8 +1198,7 @@ const renderTreeNode = (container, node, parentId, insertIndex) => {
   }
 };
 
-/** @param {HTMLElement} container */
-const renderRootTree = (container) => {
+const renderRootTree = (container: HTMLElement) => {
   clearZones();
 
   // ルート上のドロップゾーン
@@ -1260,7 +1213,7 @@ const renderRootTree = (container) => {
 
   // ルート直下ノード（左端から始まる）
   const rootChildren = container.createDiv({cls:`kv-node kv-node-${S.searchTree.type}`});
-  const children = S.searchTree.children;
+  const children = S.searchTree.children!;
   children.forEach((child, i) => {
     const dl = rootChildren.createDiv({cls:'kv-drop-line'});
     registerZone(dl, S.searchTree.id, i);
@@ -1292,68 +1245,67 @@ const getColCount = (width = container.clientWidth) => {
 
 // Cards observe their own available width. Rebuilding the header here would
 // destroy a focused dropdown during viewport/keyboard transitions.
-/** @type {CanvasRenderingContext2D|null|undefined} */
-let previewMeasureContext;
+
+let previewMeasureContext: CanvasRenderingContext2D|null|undefined;
 const fitPreviewLabels=()=>{
   previewMeasureContext??=window.createEl('canvas').getContext('2d');
   if(!previewMeasureContext) return;
-  for(const select of /** @type {NodeListOf<HTMLSelectElement>} */ (container.querySelectorAll('.kv-preview-select'))) {
+  for(const select of  (container.querySelectorAll('.kv-preview-select') as NodeListOf<HTMLSelectElement>)) {
     const style=window.getComputedStyle(select),context=previewMeasureContext;
     context.font='12px '+style.fontFamily;
     const available=select.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);
-    const required=context.measureText(select.selectedOptions[0].textContent).width;
+    const required=context.measureText(select.selectedOptions[0].textContent || '').width;
     select.style.fontSize=Math.min(12,Math.max(9,Math.floor(12*available/Math.max(1,required))))+'px';
   }
 };
-const observer = new window.ResizeObserver(() => {_activePopup?._reposition();fitPreviewLabels();if(pendingRefresh && container.clientWidth>0) refreshLater();});
+const observer = new window.ResizeObserver(() => {_activePopup?._reposition?.();fitPreviewLabels();if(pendingRefresh && container.clientWidth>0) refreshLater();});
 observer.observe(container);
-/** @param {HTMLElement} container @param {Page[]} pages */
-const buildMasonry = (container, pages) => {
+
+const buildMasonry = (container: HTMLElement, pages: Page[]) => {
   const masonry = container.createDiv({cls:`kv-masonry density-${S.density}`});
   masonry.classList.add('kv-layout-pending');
-  const cards = /** @type {HTMLDivElement[]} */ ([]);
-  const components=/** @type {Component[]} */ ([]);
-  const contentObservers=/** @type {MutationObserver[]} */ ([]);
+  const cards =  ([] as HTMLDivElement[]);
+  const components= ([] as Component[]);
+  const contentObservers= ([] as MutationObserver[]);
   let stopped=false;
 
-  /** @param {Page} p */
-  const addCard = (p) => {
+  const addCard = (p: Page) => {
     const content = getContent(p);
-    const tags = (p.file.tags||[]).map(t=>String(t));
+    const tags = (p.file.tags||[]).map((t)=>String(t));
 
     const card = masonry.createDiv({cls:'kv-card'});
     cards.push(card);
     card.dataset.path = p.file.path;
     card.tabIndex = 0; card.setAttribute('role', 'link');
-    /** @type {number|null} */ let pressTimer=null;
-    /** @type {number|null} */ let openTimer=null;
-    /** @type {{x:number,y:number}|null} */ let pressOrigin=null;
-    /** @type {{at:number,x:number,y:number}|null} */ let lastTap=null;
+     let pressTimer: number|null=null;
+     let openTimer: number|null=null;
+     let pressOrigin: {x:number,y:number}|null=null;
+     let lastTap: {at:number,x:number,y:number}|null=null;
     let suppressClick=false,textSelectionAtDown=false;
-    /** @param {Event} event */
-    const scrollbarTarget=event=>event.target instanceof window.Element?event.target.closest('.kv-scroll-rail'):null;
+
+    const scrollbarTarget=(event: Event)=>event.target instanceof window.Element?event.target.closest('.kv-scroll-rail'):null;
     const hasTextSelection=()=>{const selection=window.getSelection();return selection && !selection.isCollapsed && (card.contains(selection.anchorNode)||card.contains(selection.focusNode));};
     const cancelOpen=()=>{if(openTimer!==null) clearTimeout(openTimer);openTimer=null;};
     const openCard=()=>{
       cancelOpen();
       if(!card.isConnected || selectionMode || hasTextSelection()) return;
       const file=app.vault.getAbstractFileByPath(p.file.path);
-      if(isFile(file)) openNoteInForeground(app,file).catch(error=>new Notice(msg("ノートを開けませんでした: {0}", [errorMessage(error)])));
+      if(isFile(file)) openNoteInForeground(app,file).catch((error)=>new Notice(msg("ノートを開けませんでした: {0}", [errorMessage(error)])));
     };
 
     const cancelPress=()=>{if(pressTimer!==null) clearTimeout(pressTimer);pressTimer=null;};
-    card.onpointerdown=event=>{
+    card.onpointerdown=(event)=>{
       cancelOpen();textSelectionAtDown=!!hasTextSelection();
       if(event.button!==0 || (event.target instanceof window.Element && event.target.closest('a,button,input,textarea,select'))) return;
       if(scrollbarTarget(event)) {cancelPress();return;}
       if(container.classList.contains('kv-page-scrolling')) return;
       suppressClick=false;pressOrigin={x:event.clientX,y:event.clientY};
-      pressTimer=setTimeout(()=>{pressTimer=null;if(card.isConnected && !textSelectionAtDown) {suppressClick=true;if(hasTextSelection()) window.getSelection().removeAllRanges();toggleSelection(p.file.path);}},500);
+      pressTimer=setTimeout(()=>{pressTimer=null;if(card.isConnected && !textSelectionAtDown) {suppressClick=true;if(hasTextSelection()) window.getSelection()?.removeAllRanges();toggleSelection(p.file.path);}},500);
     };
-    card.onpointermove=event=>{if(pressOrigin && Math.hypot(event.clientX-pressOrigin.x,event.clientY-pressOrigin.y)>8) {cancelPress();cancelOpen();suppressClick=true;}};
+    card.onpointermove=(event)=>{if(pressOrigin && Math.hypot(event.clientX-pressOrigin.x,event.clientY-pressOrigin.y)>8) {cancelPress();cancelOpen();suppressClick=true;}};
     card.onpointerup=()=>{cancelPress();pressOrigin=null;};card.onpointercancel=()=>{cancelPress();cancelOpen();suppressClick=true;};card.onpointerleave=cancelPress;
-    card.oncontextmenu=event=>{if(textSelectionAtDown && hasTextSelection()){cancelPress();cancelOpen();return;}event.preventDefault();cancelPress();cancelOpen();if(hasTextSelection()) window.getSelection().removeAllRanges();if(!suppressClick && !scrollbarTarget(event)) toggleSelection(p.file.path);suppressClick=true;};
-    card.onkeydown = event=>{
+    card.oncontextmenu=(event)=>{if(textSelectionAtDown && hasTextSelection()){cancelPress();cancelOpen();return;}event.preventDefault();cancelPress();cancelOpen();if(hasTextSelection()) window.getSelection()?.removeAllRanges();if(!suppressClick && !scrollbarTarget(event)) toggleSelection(p.file.path);suppressClick=true;};
+    card.onkeydown = (event)=>{
       if(event.target!==card) return;
       if(event.key===' ') {event.preventDefault();toggleSelection(p.file.path);}
       else if(event.key==='Enter') card.click();
@@ -1370,8 +1322,7 @@ const buildMasonry = (container, pages) => {
       if(event.detail===0) openCard();else openTimer=setTimeout(openCard,320);
     };
 
-    /** @param {MouseEvent} event */
-    const selectText=event=>{
+    const selectText=(event: MouseEvent)=>{
       cancelOpen();cancelPress();
       if(selectionMode || !(event.target instanceof window.Element) || !event.target.closest('.kv-card-title,.kv-card-preview') || event.target.closest('a,button,input')) return;
       if(hasTextSelection()) return;
@@ -1379,11 +1330,11 @@ const buildMasonry = (container, pages) => {
       const legacy=caret?null:document.caretRangeFromPoint?.(event.clientX,event.clientY);
       const node=caret?.offsetNode||legacy?.startContainer,offset=caret?.offset??legacy?.startOffset;
       if(!node || node.nodeType!==3 || !card.contains(node)) return;
-      const index=Math.max(0,Math.min(offset,node.textContent.length-1));
-      const segment=[...new Intl.Segmenter(undefined,{granularity:'word'}).segment(node.textContent)].find(part=>part.index<=index && index<part.index+part.segment.length);
+      const index=Math.max(0,Math.min(offset!,node.textContent!.length-1));
+      const segment=[...new Intl.Segmenter(undefined,{granularity:'word'}).segment(node.textContent!)].find((part)=>part.index<=index && index<part.index+part.segment.length);
       if(!segment) return;
       const range=document.createRange();range.setStart(node,segment.index);range.setEnd(node,segment.index+segment.segment.length);
-      const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
+      const selection=window.getSelection();if(selection) {selection.removeAllRanges();selection.addRange(range);}
     };
     card.ondblclick=selectText;
 
@@ -1401,20 +1352,20 @@ const buildMasonry = (container, pages) => {
     body.createDiv({cls:'kv-card-title', text:p.file.name});
     if (S.density !== 'compact') {
       const wrap=body.createDiv({cls:'kv-preview-wrap'});
-      const preview=/** @type {HTMLDivElement & {_syncScrollbar?:()=>void}} */ (wrap.createDiv({cls:'kv-card-preview'}));
+      const preview= (wrap.createDiv({cls:'kv-card-preview'}) as HTMLDivElement & {_syncScrollbar?:()=>void});
       preview.id='kv-preview-'+genId();
       const rail=wrap.createDiv({cls:'kv-scroll-rail'});
       const thumb=rail.createDiv({cls:'kv-scroll-thumb'});
       rail.tabIndex=0;rail.setAttribute('role','scrollbar');rail.setAttribute('aria-label',msg("本文をスクロール"));rail.setAttribute('aria-orientation','vertical');
       rail.setAttribute('aria-controls',preview.id);
       rail.setAttribute('aria-valuemin','0');
-      /** @type {{y:number,top:number,ratio:number}|null} */ let drag=null;
+       let drag: {y:number,top:number,ratio:number}|null=null;
       const syncScrollbar=()=>{
         for(const input of preview.querySelectorAll('li > input[type=checkbox],li > p > input[type=checkbox]')) input.closest('li')?.classList.add('kv-task-item');
         for(const element of preview.querySelectorAll('[title]')) element.removeAttribute('title');
         // Keep diagram coordinates at their rendered size instead of shrinking
         // every label to fit a narrow card. The diagram can scroll horizontally.
-        for(const svg of /** @type {NodeListOf<SVGSVGElement>} */ (preview.querySelectorAll('.mermaid svg'))) {
+        for(const svg of  (preview.querySelectorAll('.mermaid svg') as NodeListOf<SVGSVGElement>)) {
           const bounds=svg.viewBox?.baseVal;
           if(bounds?.width>0 && bounds.height>0) {
             svg.style.width=bounds.width+'px';svg.style.height=bounds.height+'px';svg.classList.add('kv-measured-svg');
@@ -1430,7 +1381,7 @@ const buildMasonry = (container, pages) => {
       contentObserver.observe(preview,{childList:true,subtree:true});contentObservers.push(contentObserver);
       preview._syncScrollbar=syncScrollbar;preview.addEventListener('scroll',()=>{cancelPress();cancelOpen();syncScrollbar();},{passive:true});
       const endDrag=()=>{drag=null;rail.classList.remove('is-dragging');};
-      rail.onpointerdown=event=>{
+      rail.onpointerdown=(event)=>{
         if(event.button!==0 || container.classList.contains('kv-page-scrolling')) return;
         event.preventDefault();event.stopPropagation();
         const range=preview.scrollHeight-preview.clientHeight,travel=rail.clientHeight-thumb.offsetHeight;
@@ -1439,10 +1390,10 @@ const buildMasonry = (container, pages) => {
         drag={y:event.clientY,top:preview.scrollTop,ratio:range/travel};
         rail.setPointerCapture(event.pointerId);rail.classList.add('is-dragging');syncScrollbar();
       };
-      rail.onpointermove=event=>{if(drag) {event.preventDefault();preview.scrollTop=drag.top+(event.clientY-drag.y)*drag.ratio;syncScrollbar();}};
-      rail.onpointerup=event=>{endDrag();if(rail.hasPointerCapture(event.pointerId)) rail.releasePointerCapture(event.pointerId);};
+      rail.onpointermove=(event)=>{if(drag) {event.preventDefault();preview.scrollTop=drag.top+(event.clientY-drag.y)*drag.ratio;syncScrollbar();}};
+      rail.onpointerup=(event)=>{endDrag();if(rail.hasPointerCapture(event.pointerId)) rail.releasePointerCapture(event.pointerId);};
       rail.onpointercancel=endDrag;rail.onlostpointercapture=endDrag;
-      rail.onkeydown=event=>{
+      rail.onkeydown=(event)=>{
         const delta=event.key==='ArrowDown'?24:event.key==='ArrowUp'?-24:event.key==='PageDown'?preview.clientHeight:event.key==='PageUp'?-preview.clientHeight:0;
         if(delta) {event.preventDefault();event.stopPropagation();preview.scrollTop+=delta;syncScrollbar();}
       };
@@ -1467,14 +1418,14 @@ const buildMasonry = (container, pages) => {
     }
 
     const footer = card.createDiv({cls:'kv-card-footer'});
-    tags.forEach(t => {
+    tags.forEach((t) => {
       const clean = t.replace(/^#/,'');
       footer.createSpan({cls:'kv-card-tag', text:'#'+clean})
-        .onclick = e => {
+        .onclick = (e) => {
           e.stopPropagation();
           if(suppressClick) {suppressClick=false;return;}
           if(selectionMode) {toggleSelection(p.file.path);return;}
-          const exists = S.searchTree.children.some(c=>c.type==='tag'&&c.tag===clean);
+          const exists = S.searchTree.children!.some((c)=>c.type==='tag'&&c.tag===clean);
           if (!exists) addNode(S.searchTree.id, {type:'tag', id:genId(), tag:clean});
           else { S.limit=PAGE_SIZE; render(); }
         };
@@ -1483,8 +1434,8 @@ const buildMasonry = (container, pages) => {
     const date = dateField==='mtime'?p.file.mtime:p.file.property;
     footer.createSpan({cls:'kv-card-date', text:date===null?msg("日時なし"):relDate(date), });
   };
-  /** @type {number|null} */
-  let frame = null;
+
+  let frame: number|null = null;
   const layout = () => {
     frame = null;
     if (stopped || !masonry.isConnected) return;
@@ -1493,8 +1444,8 @@ const buildMasonry = (container, pages) => {
     const gap = parseFloat(window.getComputedStyle(masonry).getPropertyValue('--kv-card-gap')) || 12;
     const width = Math.max(1,(masonry.clientWidth-gap*(columns-1))/columns);
     for (const card of cards) card.style.width = width+'px';
-    for(const card of cards) {const preview=/** @type {HTMLElement & {_syncScrollbar?:()=>void}|null} */ (card.querySelector('.kv-card-preview'));if(preview) {preview.classList.toggle('is-scrollable',preview.scrollHeight>preview.clientHeight+1);preview._syncScrollbar?.();}}
-    const {positions,height} = masonryPositions(cards.map(card=>card.getBoundingClientRect().height),columns,gap);
+    for(const card of cards) {const preview= (card.querySelector('.kv-card-preview') as HTMLElement & {_syncScrollbar?:()=>void}|null);if(preview) {preview.classList.toggle('is-scrollable',preview.scrollHeight>preview.clientHeight+1);preview._syncScrollbar?.();}}
+    const {positions,height} = masonryPositions(cards.map((card)=>card.getBoundingClientRect().height),columns,gap);
     cards.forEach((card,index) => {
       const {column,top} = positions[index];
       card.style.left = column*(width+gap)+'px'; card.style.top = top+'px';
@@ -1507,20 +1458,19 @@ const buildMasonry = (container, pages) => {
   // ResizeObserver runs before paint, including when a hidden tab reappears.
   const cardObserver = new window.ResizeObserver(()=>{if(frame!==null) window.cancelAnimationFrame(frame);layout();});
   cardObserver.observe(masonry);
-  const cleanup = () => { stopped=true; contentObservers.forEach(observer=>observer.disconnect()); components.forEach(component=>component.unload()); cardObserver.disconnect(); if (frame!==null) window.cancelAnimationFrame(frame); };
+  const cleanup = () => { stopped=true; contentObservers.forEach((observer)=>observer.disconnect()); components.forEach((component)=>component.unload()); cardObserver.disconnect(); if (frame!==null) window.cancelAnimationFrame(frame); };
   layouts.add(cleanup);
-  /** @param {Page[]} items */
-  const append=items=>{
+
+  const append=(items: Page[])=>{
     const start=cards.length;items.forEach(addCard);
-    cards.slice(start).forEach(card=>cardObserver.observe(card));layout();
+    cards.slice(start).forEach((card)=>cardObserver.observe(card));layout();
   };
   append(pages);updateSelection();return {append};
 };
 
-/** @param {Page} page @param {string} field */
-const dateValue = (page,field) => field==='mtime'?page.file.mtime:(page.file.property??page.file.ctime);
-/** @param {Page[]} arr */
-const sortArr = (arr) => {
+const dateValue = (page: Page,field: string) => field==='mtime'?page.file.mtime:(page.file.property??page.file.ctime);
+
+const sortArr = (arr: Page[]) => {
   const dir = S.sortOrder==='asc' ? 1 : -1;
   if (S.sortField === 'name') {
     return [...arr].sort((a,b) => dir * a.file.name.localeCompare(b.file.name, undefined, {sensitivity:'base'}));
@@ -1533,19 +1483,19 @@ const sortArr = (arr) => {
 
 const candidatePages = () => {
   let pages = getPages();
-  if (S.folderFilters.length) pages = pages.filter(p=>S.folderFilters.includes(p.file.folder));
-  if (S.searchTree.children.length) pages = pages.filter(p=>evalNode(S.searchTree,p.file.tags));
+  if (S.folderFilters.length) pages = pages.filter((p)=>S.folderFilters.includes(p.file.folder));
+  if (S.searchTree.children!.length) pages = pages.filter((p)=>evalNode(S.searchTree,p.file.tags));
   if (S.dateFrom || S.dateTo) {
     const from = S.dateFrom ? new Date(S.dateFrom+'T00:00:00').getTime() : -Infinity;
     const to = S.dateTo ? new Date(S.dateTo+'T23:59:59.999').getTime() : Infinity;
-    pages = pages.filter(p=>{const date=dateValue(p,S.dateField);return date>=from && date<=to;});
+    pages = pages.filter((p)=>{const date=dateValue(p,S.dateField);return date>=from && date<=to;});
   }
-  if (S.noTagOnly) pages = pages.filter(p=>!p.file.tags.length);
+  if (S.noTagOnly) pages = pages.filter((p)=>!p.file.tags.length);
   return pages;
 };
-const filteredPages = () => sortArr(candidatePages().filter(page=>!S.textQuery || searchState.matches.has(page.file.path)));
-/** @param {string} path */
-const topFolder=path=>path.includes('/')?path.split('/')[0]:'';
+const filteredPages = () => sortArr(candidatePages().filter((page)=>!S.textQuery || searchState.matches.has(page.file.path)));
+
+const topFolder=(path: string)=>path.includes('/')?path.split('/')[0]:'';
 
 const ensureSearch=()=>{
   const query=normalizeSearch(S.textQuery.trim());
@@ -1555,18 +1505,18 @@ const ensureSearch=()=>{
     const left=topFolder(a.file.path),right=topFolder(b.file.path);
     return left===right?0:!left?1:!right?-1:left.localeCompare(right);
   });
-  const files=query?ordered.map(page=>app.vault.getAbstractFileByPath(page.file.path)).filter(isFile):[];
-  const key=JSON.stringify([query,S.groupByFolder,files.map(file=>[file.path,file.stat.mtime,file.stat.size])]);
+  const files=query?ordered.map((page)=>app.vault.getAbstractFileByPath(page.file.path)).filter(isFile):[];
+  const key=JSON.stringify([query,S.groupByFolder,files.map((file)=>[file.path,file.stat.mtime,file.stat.size])]);
   if(searchState.key===key) return;
   cardSearch.cancel();
-  const run=searchState=/** @type {SearchState} */ ({key,ready:!query,matches:new Set(),errors:[],files:new Set(files.map(file=>file.path)),completed:0,total:files.length,slow:false});
+  const run=searchState= ({key,ready:!query,matches:new Set(),errors:[],files:new Set(files.map((file)=>file.path)),completed:0,total:files.length,slow:false} as SearchState);
   if(!query) {cardSearch.clear();return;}
   const updateProgress=()=>{
     if(disposed || searchState!==run || run.ready) return;
     const status=container.querySelector('.kv-search-status');
     if(status) {
-      status.firstElementChild.textContent=msg("検索中… {0} / {1} 件", [run.completed, run.total]);
-      status.lastElementChild.textContent=run.slow?msg("初回・更新時は時間がかかる場合があります"):'';
+      status.firstElementChild!.textContent=msg("検索中… {0} / {1} 件", [run.completed, run.total]);
+      status.lastElementChild!.textContent=run.slow?msg("初回・更新時は時間がかかる場合があります"):'';
     }
   };
   const slowTimer=setTimeout(()=>{run.slow=true;updateProgress();},600);
@@ -1583,17 +1533,16 @@ const ensureSearch=()=>{
       for(;released<end;released++) if(partial.matches.has(files[released].path)) run.matches.add(files[released].path);
       if(run.matches.size!==previousMatches && (S.groupByFolder || previousMatches<S.limit)) run.repaint?.();
     }
-  }}).then(result=>{
+  }}).then((result)=>{
     if(disposed || searchState!==run || result.cancelled) return;
     if(result.storageError) new Notice(msg("検索データを保存できませんでした。今回の検索結果は表示できますが、次回は再作成する場合があります。"));
     run.ready=true;run.matches=result.matches;run.errors=result.errors;run.repaint?.();
   }).catch(()=>{
-    if(!disposed && searchState===run) {run.ready=true;run.errors=files.map(file=>file.path);run.repaint?.();}
+    if(!disposed && searchState===run) {run.ready=true;run.errors=files.map((file)=>file.path);run.repaint?.();}
   }).finally(()=>clearTimeout(slowTimer));
 };
 
-/** @param {HTMLButtonElement} button @param {string|null} folder */
-const createAndOpenNote=async(button,folder)=>{
+const createAndOpenNote=async(button: HTMLButtonElement,folder: string|null)=>{
   if(button.disabled) return;
   button.disabled=true;
   try {
@@ -1602,9 +1551,9 @@ const createAndOpenNote=async(button,folder)=>{
   } catch(error) {new Notice(msg("ノートを作成できませんでした: {0}", [errorMessage(error)]));}
   finally {button.disabled=false;}
 };
-/** @param {Page[]} visible */
-const trimContentCache=visible=>{
-  const activeKeys=new Set(visible.map(page=>page.file.path+'::'+page.file.mtime));
+
+const trimContentCache=(visible: Page[])=>{
+  const activeKeys=new Set(visible.map((page)=>page.file.path+'::'+page.file.mtime));
   const cached=Object.keys(S.contentCache);
   let excess=cached.length-Math.max(500,activeKeys.size);
   for(const key of cached) {
@@ -1613,55 +1562,55 @@ const trimContentCache=visible=>{
   }
 };
 const treeFolderPaths = () => {
-  /** @param {import("./lib/types").ResultFolder} node @returns {string[]} */
-  const collect=node=>[...node.children.values()].flatMap(child=>[child.path,...collect(child)]);
+
+  const collect=(node: ResultFolder): string[]=>[...node.children.values()].flatMap((child)=>[child.path,...collect(child)]);
   return collect(resultFolderTree(filteredPages()));
 };
 const updateTreeAction = () => {
-  const button=/** @type {HTMLButtonElement|null} */ (container.querySelector('.kv-collapse-all'));if(!button) return;
-  const paths=treeFolderPaths(),open=paths.some(path=>S.resultTreeOpen[path]===true);
+  const button= (container.querySelector('.kv-collapse-all') as HTMLButtonElement|null);if(!button) return;
+  const paths=treeFolderPaths(),open=paths.some((path)=>S.resultTreeOpen[path]===true);
   button.empty();setIcon(button,open?'chevrons-down-up':'chevrons-up-down');
   button.setAttribute('aria-label',msg(open?'すべて折りたたむ':'すべて展開'));button.disabled=!paths.length;
 };
-/** @param {CardBody} bodyEl @param {Page[]} pages @param {boolean} appendGroups */
-const renderCards = (bodyEl, pages, appendGroups=false) => {
+
+const renderCards = (bodyEl: CardBody, pages: Page[], appendGroups: boolean=false) => {
   const finishScroll=preserveScroll(bodyEl);
   if(!appendGroups) {
     for (const cleanup of layouts) cleanup();
     layouts.clear(); bodyEl.empty();bodyEl._treeGroups=new Set();
   }
-  const visible=/** @type {Page[]} */ ([]);
-  /** @param {HTMLElement} parent @param {Page[]} items */
-  const showCards=(parent,items)=>{visible.push(...items);return buildMasonry(parent,items);};
+  const visible= ([] as Page[]);
+
+  const showCards=(parent: HTMLElement,items: Page[])=>{visible.push(...items);return buildMasonry(parent,items);};
   if (!pages.length) bodyEl.createDiv({cls:'kv-empty',text:msg("該当するメモが見つかりません")});
   else if (S.groupByFolder) {
     const tree=resultFolderTree(pages);
     const nodes=[...tree.children.values()];
     const redraw=()=>renderCards(bodyEl,filteredPages());
-    /** @param {HTMLElement} parent @param {import("./lib/types").ResultFolder} node */
-    const drawNotes=(parent,node)=>{
+
+    const drawNotes=(parent: HTMLElement,node: ResultFolder)=>{
       if(!node.pages.length) return;
       const limit=S.resultTreeLimits[node.path]||PAGE_SIZE;
       const notes=parent.createDiv({cls:'kv-direct-notes'});
-      /** @type {ReturnType<typeof buildMasonry>|null} */ let grid=null;
+       let grid: ReturnType<typeof buildMasonry>|null=null;
       if(node.pages.length>limit) {
         const wrap=notes.createDiv({cls:'kv-folder-more'});
         const more=wrap.createEl('button',{cls:'kv-load-more-btn',text:msg("さらに表示 (残り {0} 件)", [node.pages.length-limit])});
-        more.onclick=()=>{if(grid) return appendMore(more,node.pages,S.resultTreeLimits[node.path]||PAGE_SIZE,grid.append,value=>{S.resultTreeLimits[node.path]=value;});};
+        more.onclick=()=>{if(grid) return appendMore(more,node.pages,S.resultTreeLimits[node.path]||PAGE_SIZE,grid.append,(value)=>{S.resultTreeLimits[node.path]=value;});};
         more.disabled=true;
       }
       const mount=()=>{
         const pagination=notes.querySelector('.kv-folder-more');
         grid=showCards(notes,node.pages.slice(0,limit));
-        if(pagination) {notes.appendChild(pagination);/** @type {HTMLButtonElement} */ (pagination.firstElementChild).disabled=false;}
+        if(pagination) {notes.appendChild(pagination); (pagination.firstElementChild as HTMLButtonElement).disabled=false;}
         notes.style.removeProperty('min-height');
       };
       if(deferTreeCards && window.IntersectionObserver) {
         const columns=getColCount(bodyEl.clientWidth+32);
         notes.style.minHeight=(Math.ceil(Math.min(limit,node.pages.length)/columns)*180)+'px';
         let active=true,queued=false;
-        const observer=new window.IntersectionObserver(entries=>{
-          if(queued || !entries.some(entry=>entry.isIntersecting)) return;
+        const observer=new window.IntersectionObserver((entries)=>{
+          if(queued || !entries.some((entry)=>entry.isIntersecting)) return;
           queued=true;observer.disconnect();
           scheduleTreeCards(()=>{if(!active || !notes.isConnected) return false;mount();return true;});
         },{rootMargin:'1200px'});
@@ -1669,46 +1618,46 @@ const renderCards = (bodyEl, pages, appendGroups=false) => {
         layouts.add(()=>{active=false;observer.disconnect();});
       } else mount();
     };
-    /** @param {import("./lib/types").ResultFolder} node @returns {string[]} */
-    const nodePaths=node=>[...node.pages.map(page=>page.file.path),...[...node.children.values()].flatMap(nodePaths)];
-    /** @param {HTMLElement} parent @param {import("./lib/types").ResultFolder} node */
-    const drawNode=(parent,node)=>{
+
+    const nodePaths=(node: ResultFolder): string[]=>[...node.pages.map((page)=>page.file.path),...[...node.children.values()].flatMap(nodePaths)];
+
+    const drawNode=(parent: HTMLElement,node: ResultFolder)=>{
       const branch=parent.createDiv({cls:'kv-result-branch'});
       const key=node.path;
       branch.dataset.folder=node.path;
       const open=S.resultTreeOpen[key]===true;
       const heading=branch.createDiv({cls:'kv-result-folder-heading'});
-      const toggle=/** @type {HTMLButtonElement & {_selectionPaths?:string[]}} */ (heading.createEl('button',{cls:'kv-result-folder'}));
+      const toggle= (heading.createEl('button',{cls:'kv-result-folder'}) as HTMLButtonElement & {_selectionPaths?:string[]});
       toggle.setAttribute('aria-expanded',String(open));
       const arrow=disclosureIcon(toggle,open);
       toggle.createSpan({cls:'kv-result-folder-name',text:node.name});toggle.createSpan({cls:'kv-result-count',text:String(node.count)});
       const add=iconButton(heading,'square-pen',msg("{0} に新規ノート", [node.name]));add.classList.add('kv-folder-create');
       add.onclick=()=>createAndOpenNote(add,node.path);
       toggle._selectionPaths=nodePaths(node);
-      /** @type {number|null} */ let press=null;
-      /** @type {{x:number,y:number}|null} */ let origin=null;let suppress=false;
+       let press: number|null=null;
+       let origin: {x:number,y:number}|null=null;let suppress=false;
       const cancel=()=>{if(press!==null) clearTimeout(press);press=null;};
-      const expand=()=>{if(selectionBusy) return;animateDisclosure(arrow,!arrow.classList.contains('is-open'),value=>{S.resultTreeOpen[key]=value;redraw();});};
-      arrow.onclick=event=>{event.stopPropagation();if(suppress) {suppress=false;return;}expand();};
-      toggle.onpointerdown=event=>{
+      const expand=()=>{if(selectionBusy) return;animateDisclosure(arrow,!arrow.classList.contains('is-open'),(value)=>{S.resultTreeOpen[key]=value;redraw();});};
+      arrow.onclick=(event)=>{event.stopPropagation();if(suppress) {suppress=false;return;}expand();};
+      toggle.onpointerdown=(event)=>{
         if(event.button!==0 || (event.target instanceof window.Element && event.target.closest('.kv-result-folder > span:first-child'))) return;
         suppress=false;origin={x:event.clientX,y:event.clientY};
         press=setTimeout(()=>{press=null;if(toggle.isConnected){suppress=true;toggleFolderSelection(node.path);}},500);
       };
-      toggle.onpointermove=event=>{if(origin && Math.hypot(event.clientX-origin.x,event.clientY-origin.y)>8) cancel();};
+      toggle.onpointermove=(event)=>{if(origin && Math.hypot(event.clientX-origin.x,event.clientY-origin.y)>8) cancel();};
       toggle.onpointerup=cancel;toggle.onpointercancel=cancel;toggle.onpointerleave=cancel;
-      toggle.oncontextmenu=event=>{event.preventDefault();cancel();if(!suppress) toggleFolderSelection(node.path);suppress=true;};
-      toggle.onclick=event=>{if(suppress){suppress=false;return;}if(selectionMode || event.ctrlKey || event.metaKey) toggleFolderSelection(node.path);else expand();};
+      toggle.oncontextmenu=(event)=>{event.preventDefault();cancel();if(!suppress) toggleFolderSelection(node.path);suppress=true;};
+      toggle.onclick=(event)=>{if(suppress){suppress=false;return;}if(selectionMode || event.ctrlKey || event.metaKey) toggleFolderSelection(node.path);else expand();};
       if(!open) return;
       const content=branch.createDiv({cls:'kv-result-children'});
-      [...node.children.values()].sort((a,b)=>a.name.localeCompare(b.name)).forEach(child=>drawNode(content,child));
+      [...node.children.values()].sort((a,b)=>a.name.localeCompare(b.name)).forEach((child)=>drawNode(content,child));
       drawNotes(content,node);
     };
-    nodes.sort((a,b)=>a.path.localeCompare(b.path)).forEach(node=>{
-      if(bodyEl._treeGroups.has(node.path)) return;
-      drawNode(bodyEl,node);bodyEl._treeGroups.add(node.path);
+    nodes.sort((a,b)=>a.path.localeCompare(b.path)).forEach((node)=>{
+      if(bodyEl._treeGroups!.has(node.path)) return;
+      drawNode(bodyEl,node);bodyEl._treeGroups!.add(node.path);
     });
-    if(tree.pages.length && !bodyEl._treeGroups.has('')) {drawNotes(bodyEl,tree);bodyEl._treeGroups.add('');}
+    if(tree.pages.length && !bodyEl._treeGroups!.has('')) {drawNotes(bodyEl,tree);bodyEl._treeGroups!.add('');}
     updateSelection();
   } else bodyEl._appendCards=showCards(bodyEl,pages.slice(0,S.limit)).append;
   trimContentCache(visible);
@@ -1717,11 +1666,11 @@ const renderCards = (bodyEl, pages, appendGroups=false) => {
 };
 
 // Leave the existing cards mounted while reading and appending the next batch.
-/** @param {HTMLButtonElement} button @param {Page[]} pages @param {number} limit @param {(pages:Page[])=>void} append @param {(value:number)=>void} setLimit */
-const appendMore=async(button,pages,limit,append,setLimit)=>{
+
+const appendMore=async(button: HTMLButtonElement,pages: Page[],limit: number,append: (pages:Page[])=>void,setLimit: (value:number)=>void)=>{
   button.disabled=true;
   const next=pages.slice(limit,limit+PAGE_SIZE);
-  await Promise.all(next.map(getContent).filter(entry=>entry.loading).map(entry=>entry.promise));
+  await Promise.all(next.map(getContent).filter((entry)=>entry.loading).map((entry)=>entry.promise));
   if(disposed || !button.isConnected) return;
   append(next);setLimit(limit+next.length);
   button.blur();
@@ -1737,7 +1686,7 @@ const appendMore=async(button,pages,limit,append,setLimit)=>{
 };
 
 const getScrollContainer = () => {
-  let el = container;
+  let el: HTMLElement|null = container;
   while (el) {
     if (el.scrollHeight > el.clientHeight+2) {
       const s = window.getComputedStyle(el);
@@ -1751,14 +1700,14 @@ const getScrollContainer = () => {
 // Replacing cards temporarily collapses the scroll height. Reserve it until
 // asynchronous previews and their measured layout settle; never lock scrolling.
 const scrollGuards=new WeakMap();
-/** @param {HTMLElement} element */
-const preserveScroll = element => {
+
+const preserveScroll = (element: HTMLElement) => {
   const scroller=getScrollContainer(), top=scroller?.scrollTop;
   const token={};scrollGuards.set(element,token);
   element.style.minHeight=element.getBoundingClientRect().height+'px';
   return ()=>{
-    if(scroller) scroller.scrollTop=top;
-    const loading=Object.values(S.contentCache).filter(entry=>entry.loading).map(entry=>entry.promise);
+    if(scroller) scroller.scrollTop=top!;
+    const loading=Object.values(S.contentCache).filter((entry)=>entry.loading).map((entry)=>entry.promise);
     Promise.all(loading).then(()=>{if(disposed) return;setTimeout(()=>{
       if(scrollGuards.get(element)===token) element.style.removeProperty('min-height');
     },100);});
@@ -1774,7 +1723,7 @@ const render = () => {
   if (_activePopup && !_activePopup._isFolderDropdown) closePopup();
 
   const root = container;
-  const oldInput = /** @type {HTMLInputElement|null} */ (root.querySelector('.kv-formula-input'));
+  const oldInput =  (root.querySelector('.kv-formula-input') as HTMLInputElement|null);
   const focused = document.activeElement === oldInput;
   const draft = oldInput?.value;
   const selection = oldInput ? [oldInput.selectionStart, oldInput.selectionEnd] : null;
@@ -1815,7 +1764,7 @@ const render = () => {
   const closestPv = pvOptions.reduce((prev, curr) =>
     Math.abs(curr - S.previewChars) < Math.abs(prev - S.previewChars) ? curr : prev
   );
-  pvOptions.forEach(v => {
+  pvOptions.forEach((v) => {
     const o = pvSel.createEl('option', {value:String(v), text:msg("{0}字", [v])});
     if (v === closestPv) o.selected = true;
   });
@@ -1829,7 +1778,7 @@ const render = () => {
   const folderBtn = iconButton(row2,'folder',msg("フォルダ"),S.folderFilters.length>0);
   folderBtn.title=S.folderFilters.length?msg("フォルダ（{0} 選択中）", [S.folderFilters.length]):msg("フォルダ");
   folderBtn.onclick = (e) => { e.stopPropagation(); openFolderDropdown(folderBtn); };
-  if (_activePopup?._isFolderDropdown) { _activePopup._anchor=folderBtn; _activePopup._reposition(); }
+  if (_activePopup?._isFolderDropdown) { _activePopup._anchor=folderBtn; _activePopup._reposition?.(); }
 
   const treeButton=iconButton(row1,TREE_ICON,msg("ツリー表示"),S.groupByFolder);
   treeButton.setAttribute('aria-pressed',String(S.groupByFolder));
@@ -1838,7 +1787,7 @@ const render = () => {
   searchButton.title=S.textQuery?msg("全文検索: {0}", [S.textQuery]):msg("全文検索");
   searchButton.onclick=()=>{
     searchModal?.close();
-    searchModal=new TextSearchModal(app,S.textQuery,value=>{
+    searchModal=new TextSearchModal(app,S.textQuery,(value)=>{
       pushUndo();S.textQuery=value;S.limit=PAGE_SIZE;searchActivated=true;searchState.key=null;render();
     });
     searchModal.open();
@@ -1850,9 +1799,9 @@ const render = () => {
   if(S.groupByFolder) {
     const collapse=iconButton(actions,'chevrons-down-up',msg("すべて折りたたむ"));collapse.classList.add('kv-collapse-all');
     collapse.onclick=()=>{
-      const paths=treeFolderPaths(),open=paths.some(path=>S.resultTreeOpen[path]===true);
+      const paths=treeFolderPaths(),open=paths.some((path)=>S.resultTreeOpen[path]===true);
       const pages=filteredPages();deferTreeCards=!open && pages.length>120;
-      S.resultTreeOpen=open?{}:Object.fromEntries(paths.map(path=>[path,true]));renderCards(bodyEl,pages);
+      S.resultTreeOpen=open?{}:Object.fromEntries(paths.map((path)=>[path,true]));renderCards(bodyEl,pages);
     };
   }
   actions.classList.toggle('has-search',!!S.textQuery);
@@ -1932,7 +1881,7 @@ const render = () => {
   }).onclick = () => { pushUndo(); S.noTagOnly=!S.noTagOnly; S.limit=PAGE_SIZE; render(); };
   // Grid areas put these controls in the requested order at each pane width.
   toolbar.appendChild(row2);
-  toolbar.appendChild(row3.querySelector('.kv-no-tag'));
+  toolbar.appendChild(row3.querySelector('.kv-no-tag')!);
 
   /* ===== 検索パネル ===== */
   const panel = header.createDiv({cls:'kv-search-panel'});
@@ -1942,8 +1891,8 @@ const render = () => {
     type: 'text',
     placeholder: msg("例: #仕事 AND NOT #完了 AND (#重要 OR #緊急)"),
   });
-  formulaInput.value = focused ? draft : S.formula;
-  if (focused) { formulaInput.focus(); formulaInput.setSelectionRange(selection[0],selection[1]); }
+  formulaInput.value = focused ? draft! : S.formula;
+  if (focused && selection) { formulaInput.focus(); formulaInput.setSelectionRange(selection[0],selection[1]); }
 
   const applyFormula = () => {
     const val = formulaInput.value;
@@ -1953,19 +1902,18 @@ const render = () => {
   formulaInput.addEventListener('blur', applyFormula);
   formulaInput.addEventListener('keydown', (e) => { if(e.key==='Enter'){e.preventDefault();applyFormula();} });
 
-  /** @param {string} query @param {HTMLElement} anchorEl */
-  const openSuggest = (query, anchorEl) => {
+  const openSuggest = (query: string, anchorEl: HTMLElement) => {
     const allTags = Object.keys(S.tagCache||{}).sort();
-    const candidates = allTags.filter(t => t.toLowerCase().startsWith(query.toLowerCase())).slice(0, 12);
+    const candidates = allTags.filter((t) => t.toLowerCase().startsWith(query.toLowerCase())).slice(0, 12);
     if (!candidates.length) { closePopup(); return; }
-    openPopup(anchorEl, popup => {
-    candidates.forEach(tag => {
+    openPopup(anchorEl, (popup) => {
+    candidates.forEach((tag) => {
       const item = popup.createDiv({cls:'kv-dropdown-item'});
       item.createSpan({text:'#'+tag});
       item.onpointerdown = (e) => {
         e.preventDefault();
         const val  = formulaInput.value;
-        const pos  = formulaInput.selectionStart;
+        const pos  = formulaInput.selectionStart!;
         const before = val.slice(0, pos);
         const match = before.match(/#([\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f\-/]*)$/);
         if (match) {
@@ -1982,7 +1930,7 @@ const render = () => {
 
   formulaInput.addEventListener('input', () => {
     const val  = formulaInput.value;
-    const pos  = formulaInput.selectionStart;
+    const pos  = formulaInput.selectionStart!;
     const before = val.slice(0, pos);
     const match = before.match(/#([\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f\-/]*)$/);
     if (!match) { closePopup(); return; }
@@ -1995,7 +1943,7 @@ const render = () => {
   const treeArea = panel.createDiv({cls:'kv-tree-area'});
   renderRootTree(treeArea);
 
-  if (S.formulaError || S.searchTree.children.length > 0) {
+  if (S.formulaError || S.searchTree.children!.length > 0) {
     const footer = panel.createDiv({cls:'kv-search-footer'});
     if (S.formulaError) footer.createSpan({cls:'kv-search-error', text:'⚠ '+S.formulaError});
     footer.createEl('button', {cls:'kv-btn', text:msg("クリア")})
@@ -2009,19 +1957,19 @@ const render = () => {
   counter.textContent = searching?'':msg("{0} 件", [pages.length]);
   exportButton.disabled = !!S.formulaError || searching || (!!S.textQuery && searchState.errors.length>0);
   if (S.dateField==='property' || S.sortField==='property') {
-    const missing = getPages().filter(page=>page.file.property===null).length;
+    const missing = getPages().filter((page)=>page.file.property===null).length;
     counter.title = msg("{0}: Vault 全体で {1} 件が未設定または無効。並び替えと期間指定にはファイル作成日時を使います。", [settings.dateProperty, missing]);
   }
-  /** @type {HTMLElement|null} */ let status=null;
+   let status: HTMLElement|null=null;
   if(searching) {
-    status=statusSlot.createDiv({cls:'kv-search-status'});status.setAttribute('role','status');
+    status=statusSlot!.createDiv({cls:'kv-search-status'});status.setAttribute('role','status');
     status.createDiv({text:searchState.waiting?msg("全文検索ボタンから検索を再開してください"):msg("検索中… {0} / {1} 件", [searchState.completed, searchState.total])});
     status.createDiv({cls:'kv-search-hint',text:searchState.slow?msg("初回・更新時は時間がかかる場合があります"):''});
   }
-  const bodyEl=/** @type {CardBody} */ (root.createDiv({cls:'kv-body-wrapper'}));
+  const bodyEl= (root.createDiv({cls:'kv-body-wrapper'}) as CardBody);
   const pagWrap=root.createDiv({cls:'kv-load-more-wrap kv-body-wrapper'});
   const run=searchState;
-  let shown=0,treeStarted=false,painting=false,again=false,paintTimer=null;
+  let shown=0,treeStarted=false,painting=false,again=false;let paintTimer: number|null=null;
   const canPaint=()=>{
     if(disposed || searchState!==run) return false;
     // ItemView.onOpen can run before its content joins the workspace DOM.
@@ -2042,7 +1990,7 @@ const render = () => {
         const current=filteredPages();
         if(S.textQuery && !S.groupByFolder) {
           const next=current.slice(shown,S.limit);
-          await Promise.all(next.map(getContent).filter(entry=>entry.loading).map(entry=>entry.promise));
+          await Promise.all(next.map(getContent).filter((entry)=>entry.loading).map((entry)=>entry.promise));
           if(!canPaint()) return;
           if(next.length) {
             if(!bodyEl._appendCards) bodyEl._appendCards=buildMasonry(bodyEl,[]).append;
@@ -2064,7 +2012,7 @@ const render = () => {
           if(!pagWrap.hasChildNodes()) {
             if(!S.groupByFolder && current.length>S.limit) {
               const more=pagWrap.createEl('button',{cls:'kv-load-more-btn',text:msg("さらに表示 (残り {0} 件)", [current.length-S.limit])});
-              more.onclick=()=>appendMore(more,current,S.limit,bodyEl._appendCards,value=>{S.limit=value;});
+              more.onclick=()=>appendMore(more,current,S.limit,bodyEl._appendCards!,(value)=>{S.limit=value;});
             }
             if(current.length) iconButton(pagWrap,'arrow-up',msg("トップへ戻る")).onclick=()=>{
               const sc=getScrollContainer();if(sc) sc.scrollTo({top:0,behavior:'smooth'});else window.scrollTo({top:0,behavior:'smooth'});
@@ -2082,7 +2030,7 @@ const render = () => {
 
   // Obsidian's accessible tooltip replaces the browser's native title popup.
   for(const element of root.querySelectorAll('[title]')) {
-    const description=element.getAttribute('title');
+    const description=element.getAttribute('title')!;
     element.setAttribute(element.hasAttribute('aria-label')?'aria-description':'aria-label',description);
     element.removeAttribute('title');
   }
@@ -2107,10 +2055,10 @@ const render = () => {
 
 render();
 return {
-  /** @param {SearchIndex|null} index @param {{pause?:boolean}} options */
-  setSearchIndex(index,{pause=false}={}) {if(cardSearch.index===index && !pause) return;cardSearch.clear();cardSearch.index=index;if(pause) searchActivated=false;searchState.key=null;forceRefresh=true;refreshLater();},
-  /** @param {import("obsidian").TAbstractFile} [file] */
-  refresh(file) { if(file?.path) {forceRefresh=file.path.toLowerCase().endsWith('.md') || forceRefresh;cardSearch.invalidate(file.path);if(searchState.files?.has(file.path)) {cardSearch.cancel();searchState.key=null;}} revision++; pagesCache=null; S.tagCache = null; refreshLater(); },
+
+  setSearchIndex(index: SearchIndex|null,{pause=false}: {pause?:boolean}={}) {if(cardSearch.index===index && !pause) return;cardSearch.clear();cardSearch.index=index;if(pause) searchActivated=false;searchState.key=null;forceRefresh=true;refreshLater();},
+
+  refresh(file?: TAbstractFile) { if(file?.path) {forceRefresh=file.path.toLowerCase().endsWith('.md') || forceRefresh;cardSearch.invalidate(file.path);if(searchState.files?.has(file.path)) {cardSearch.cancel();searchState.key=null;}} revision++; pagesCache=null; S.tagCache = null; refreshLater(); },
   refreshSettings() {forceRefresh=true;revision++;pagesCache=null;S.tagCache=null;refreshLater();},
   dispose() { disposed = true; cardSearch.dispose();observer.disconnect(); for (const cleanup of layouts) cleanup(); layouts.clear(); closePopup(); exportModal?.close(); searchModal?.close(); deleteModal?.close(); dateGuidanceModal?.close(); dateMigrationModal?.close(); dragCleanup?.(); for (const timer of timers) window.clearTimeout(timer); timers.clear(); lifetime.abort(); releaseTooltips(); persist(takeSaved()); container.empty(); },
 };
@@ -2123,8 +2071,16 @@ class KeepViewModal extends Modal {
 }
 
 class DeleteNotesModal extends KeepViewModal {
-  /** @param {import('obsidian').App} app @param {{path:string,file:import('obsidian').TFile}[]} targets @param {string} mode @param {()=>Promise<unknown>} apply @param {()=>void} onDismiss */
-  constructor(app,targets,mode,apply,onDismiss) {super(app);this.targets=targets;this.mode=mode;this.apply=apply;this.onDismiss=onDismiss;this.components=/** @type {Component[]} */ ([]);this.offset=0;this.closed=false;this.busy=false;}
+  declare targets: { path: string; file: TFile|null; }[];
+  declare mode: string;
+  declare apply: () => Promise<unknown>;
+  declare onDismiss: () => void;
+  declare components: Component[];
+  declare offset: number;
+  declare closed: boolean;
+  declare busy: boolean;
+
+  constructor(app: App,targets: {path:string,file:TFile|null}[],mode: string,apply: ()=>Promise<unknown>,onDismiss: ()=>void) {super(app);this.targets=targets;this.mode=mode;this.apply=apply;this.onDismiss=onDismiss;this.components= ([] as Component[]);this.offset=0;this.closed=false;this.busy=false;}
   onOpen() {
     this.prepareSurface();
     const root=this.contentEl;root.addClass('kv-delete-modal');this.modalEl?.addClass('kv-delete-dialog');
@@ -2139,7 +2095,7 @@ class DeleteNotesModal extends KeepViewModal {
     const append=async()=>{
       more.disabled=true;confirm.disabled=true;
       const batch=this.targets.slice(this.offset,this.offset+30);this.offset+=batch.length;
-      await Promise.all(batch.map(async target=>{
+      await Promise.all(batch.map(async (target)=>{
         const card=previews.createDiv({cls:'kv-card'});card.dataset.path=target.path;
         const body=card.createDiv({cls:'kv-card-body'});
         body.createDiv({cls:'kv-card-title',text:target.file?.basename||target.path.split('/').pop()});
@@ -2171,8 +2127,10 @@ class DeleteNotesModal extends KeepViewModal {
 }
 
 class TextSearchModal extends KeepViewModal {
-  /** @param {import('obsidian').App} app @param {string} query @param {(value:string)=>void|Promise<void>} apply */
-  constructor(app,query,apply) {super(app);this.query=query;this.apply=apply;}
+  declare query: string;
+  declare apply: (value: string) => void | Promise<void>;
+
+  constructor(app: App,query: string,apply: (value:string)=>void|Promise<void>) {super(app);this.query=query;this.apply=apply;}
   onOpen() {
     this.prepareSurface();
     const root=this.contentEl;root.addClass('kv-text-search-modal');
@@ -2184,24 +2142,26 @@ class TextSearchModal extends KeepViewModal {
     // Keep actions outside the form: clearing must never also submit its old value.
     const actions=root.createDiv({cls:'kv-modal-actions'});
     let committed=false;
-    /** @param {string} value */
-    const commit=async value=>{if(committed) return;committed=true;try {await this.apply(value);this.close();} catch(error) {committed=false;new Notice(errorMessage(error) || msg("検索を開けませんでした"));}};
+
+    const commit=async (value: string)=>{if(committed) return;committed=true;try {await this.apply(value);this.close();} catch(error) {committed=false;new Notice(errorMessage(error) || msg("検索を開けませんでした"));}};
     const search=actions.createEl('button',{text:msg("検索")});search.type='button';
     const clear=actions.createEl('button',{text:msg("クリア")});clear.type='button';
     // Do not move focus before the tap completes: a closing mobile keyboard can
     // otherwise move the button out from under the user's finger.
-    for(const button of [search,clear]) button.onpointerdown=event=>event.preventDefault();
+    for(const button of [search,clear]) button.onpointerdown=(event)=>event.preventDefault();
     search.onclick=()=>commit(input.value.trim());
     clear.onclick=()=>{input.value='';commit('');};
-    form.onsubmit=event=>{event.preventDefault();commit(input.value.trim());};
+    form.onsubmit=(event)=>{event.preventDefault();commit(input.value.trim());};
     input.focus();input.select();
   }
   onClose() {this.tooltipCleanup();this.contentEl.empty();}
 }
 
 class PathExportModal extends KeepViewModal {
-  /** @param {import('obsidian').App} app @param {import('./lib/types').PathExport} payload */
-  constructor(app, payload) { super(app); this.payload=payload; }
+  declare payload: PathExport;
+  declare previewTimer: number;
+
+  constructor(app: App, payload: PathExport) { super(app); this.payload=payload; }
   onOpen() {
     this.prepareSurface();
     const root=this.contentEl; root.addClass('kv-export-modal');
@@ -2216,7 +2176,7 @@ class PathExportModal extends KeepViewModal {
     const absolute=absoluteLabel.createEl('input',{type:'checkbox'});
     absoluteLabel.createSpan({text:msg("Vault の絶対パスを含める")});
     const adapter=this.app.vault.adapter;
-    const getBasePath='getBasePath' in adapter && typeof adapter.getBasePath==='function'?()=>{const value=/** @type {()=>unknown} */ (adapter.getBasePath).call(adapter);return typeof value==='string'?value:null;}:null;
+    const getBasePath='getBasePath' in adapter && typeof adapter.getBasePath==='function'?()=>{const value= (adapter.getBasePath as ()=>unknown).call(adapter);return typeof value==='string'?value:null;}:null;
     absolute.disabled=!getBasePath;
     if(absolute.disabled) root.createEl('p',{cls:'kv-export-note',text:msg("この端末では Vault の絶対パスを取得できません。")});
     const preview=root.createEl('textarea'); preview.readOnly=true;
@@ -2228,10 +2188,10 @@ class PathExportModal extends KeepViewModal {
     format.onchange=update;
     absolute.onchange=update;
     heading.focus({preventScroll:true});
-    this.previewTimer=root.ownerDocument.defaultView.setTimeout(update,0);
+    this.previewTimer=root.ownerDocument.defaultView!.setTimeout(update,0);
     const actions=root.createDiv({cls:'kv-modal-actions'});
     actions.createEl('button',{text:msg("コピー")}).onclick=async()=>{
-      try { await root.ownerDocument.defaultView.navigator.clipboard.writeText(preview.value); new Notice(msg("パスをコピーしました")); }
+      try { await root.ownerDocument.defaultView!.navigator.clipboard.writeText(preview.value); new Notice(msg("パスをコピーしました")); }
       catch { preview.focus(); preview.select(); new Notice(msg("コピーできませんでした。選択されたテキストを手動でコピーしてください")); }
     };
     const save=actions.createEl('button',{text:msg("Vault に保存")});
@@ -2243,12 +2203,14 @@ class PathExportModal extends KeepViewModal {
       finally {save.disabled=false;}
     };
   }
-  onClose() {this.tooltipCleanup();this.contentEl.ownerDocument.defaultView.clearTimeout(this.previewTimer);this.contentEl.empty();}
+  onClose() {this.tooltipCleanup();this.contentEl.ownerDocument.defaultView!.clearTimeout(this.previewTimer);this.contentEl.empty();}
 }
 
 class CacheDeleteModal extends KeepViewModal {
-  /** @param {import('obsidian').App} app @param {()=>Promise<void>} apply */
-  constructor(app,apply) {super(app);this.apply=apply;this.busy=false;}
+  declare apply: () => Promise<void>;
+  declare busy: boolean;
+
+  constructor(app: App,apply: ()=>Promise<void>) {super(app);this.apply=apply;this.busy=false;}
   onOpen() {
     this.prepareSurface();
     const root=this.contentEl;root.addClass('kv-cache-delete-modal');
@@ -2270,10 +2232,15 @@ class CacheDeleteModal extends KeepViewModal {
 }
 
 class CreationDateModal extends KeepViewModal {
-  /** @type {HTMLInputElement|null} */ optOut=null;
+  declare property: string;
+  declare summary: { missing: number; invalid: number; importable: number; };
+  declare onHide: () => void;
+  declare onImport: () => void;
+
+   optOut: HTMLInputElement|null=null;
   closed=false;
-  /** @param {import('obsidian').App} app @param {string} property @param {{missing:number,invalid:number,importable:number}} summary @param {()=>void} onHide @param {()=>void} onImport */
-  constructor(app,property,summary,onHide,onImport) {super(app);this.property=property;this.summary=summary;this.onHide=onHide;this.onImport=onImport;}
+
+  constructor(app: App,property: string,summary: {missing:number,invalid:number,importable:number},onHide: ()=>void,onImport: ()=>void) {super(app);this.property=property;this.summary=summary;this.onHide=onHide;this.onImport=onImport;}
   onOpen() {
     this.prepareSurface();
     const root=this.contentEl;root.addClass('kv-date-guidance-modal');this.modalEl?.addClass('kv-date-guidance-dialog');
@@ -2298,8 +2265,10 @@ class CreationDateModal extends KeepViewModal {
 }
 
 class MigrationModal extends KeepViewModal {
-  /** @param {import('obsidian').App} app @param {string} property */
-  constructor(app, property) { super(app); this.property=property; this.runId=0; }
+  declare property: string;
+  declare runId: number;
+
+  constructor(app: App, property: string) { super(app); this.property=property; this.runId=0; }
   onOpen() {
     this.prepareSurface();
     const root=this.contentEl; root.addClass('kv-migration-modal');
@@ -2318,18 +2287,18 @@ class MigrationModal extends KeepViewModal {
     const status=root.createEl('p');
     const preview=root.createEl('textarea'); preview.readOnly=true;
     preview.setAttribute('aria-label',msg("日時の変換結果"));
-    /** @type {{property:string,folder:string,paths:string[]}|null} */ let plan=null;let busy=false;
+     let plan: {property:string,folder:string,paths:string[]}|null=null;let busy=false;
     const invalidate=()=>{plan=null;apply.disabled=true;status.textContent=msg("条件を変更しました。対象を再確認してください。");};
     property.oninput=invalidate; folder.oninput=invalidate;
-    /** @param {Awaited<ReturnType<typeof migrateCreated>>} report */
-    const show=report=>{
-      /** @param {string} key */
-      const count=key=>report.rows.filter(row=>row.status===key).length;
+
+    const show=(report: Awaited<ReturnType<typeof migrateCreated>>)=>{
+
+      const count=(key: string)=>report.rows.filter((row)=>row.status===key).length;
       status.textContent=msg("対象 {0} / 書き込み {1} / 既存 {2} / 日時を判別できない {3} / エラー {4}{5}", [count('ready'), count('written'), count('existing'), count('unrecognized'), count('error'), report.cancelled?msg("（中断）"):'']);
       preview.value=JSON.stringify(report,null,2);
     };
-    /** @param {boolean} writing */
-    const run=async writing=>{
+
+    const run=async (writing: boolean)=>{
       if (busy || (writing && !plan)) return;
       busy=true; scan.disabled=true; apply.disabled=true; property.disabled=true; folder.disabled=true;
       const runId=++this.runId;
@@ -2338,7 +2307,7 @@ class MigrationModal extends KeepViewModal {
         const report=await migrateCreated(this.app,{...options,cancelled:()=>this.runId!==runId});
         if (this.runId!==runId) return;
         show(report);
-        plan=writing?null:{property:report.property,folder:report.folder,paths:report.rows.filter(row=>row.status==='ready').map(row=>row.path)};
+        plan=writing?null:{property:report.property,folder:report.folder,paths:report.rows.filter((row)=>row.status==='ready').map((row)=>row.path)};
       } catch(error) {status.textContent=errorMessage(error);plan=null;}
       finally {busy=false;scan.disabled=false;property.disabled=false;folder.disabled=false;apply.disabled=!plan?.paths.length;}
     };
@@ -2348,9 +2317,10 @@ class MigrationModal extends KeepViewModal {
 }
 
 class KeepViewSettings extends PluginSettingTab {
-  /** @param {import("obsidian").App} app @param {KeepViewPlugin} plugin */
-  constructor(app, plugin) {super(app,plugin);this.plugin=plugin;}
-  /** @type {Setting|null} */ dateInfo=null;
+  declare plugin: KeepViewPlugin;
+
+  constructor(app: App, plugin: KeepViewPlugin) {super(app,plugin);this.plugin=plugin;}
+   dateInfo: Setting|null=null;
   dateDescription() {return msg("タイムゾーン（空欄は端末設定）。例: Asia/Tokyo、UTC、America/New_York\n保存先: {0} / {1} / ISO 8601\n保存例: {2}",[this.plugin.settings.dateProperty,this.plugin.settings.creationTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,localIsoTimestamp(new Date(),this.plugin.settings.creationTimeZone || '')]);}
   redisplay() {
     if(typeof requireApiVersion==='function') {
@@ -2358,14 +2328,14 @@ class KeepViewSettings extends PluginSettingTab {
     }
     this.display();
   }
-  /** @returns {SettingRow[]} */
-  getSettingDefinitions() {
+
+  getSettingDefinitions(): SettingRow[] {
     const updateDateInfo=()=>this.dateInfo?.setDesc(this.dateDescription());
     return [
-    {name:msg('言語'),render:setting=>{setting.addDropdown(dropdown=>dropdown
+    {name:msg('言語'),render:(setting)=>{setting.addDropdown((dropdown)=>dropdown
       .addOption('en','English').addOption('ja','日本語')
-      .setValue(getLocale()).onChange(value=>{this.plugin.settings.language=value;this.plugin.saveSettings();this.redisplay();}))}},
-    {name:msg("プレビュー文字数"),render:setting=>{setting.addText(text=>{
+      .setValue(getLocale()).onChange((value)=>{this.plugin.settings.language=value;this.plugin.saveSettings();this.redisplay();}))}},
+    {name:msg("プレビュー文字数"),render:(setting)=>{setting.addText((text)=>{
       const defaults=DEFAULT_SETTINGS.previewLengths.join(', ');
       const current=(this.plugin.settings.previewLengths||DEFAULT_SETTINGS.previewLengths).join(', ');
       text.setValue(current===defaults?'':current);
@@ -2377,14 +2347,14 @@ class KeepViewSettings extends PluginSettingTab {
         this.plugin.settings.previewLengths=values;this.plugin.saveSettings();
       });
     });}},
-    {name:msg("プレビュー表示"),render:setting=>{setting.addDropdown(dropdown=>dropdown
+    {name:msg("プレビュー表示"),render:(setting)=>{setting.addDropdown((dropdown)=>dropdown
       .addOption('markdown',msg('Markdown')).addOption('source',msg("ソース"))
       .setValue(this.plugin.settings.previewMode)
-      .onChange(value=>{this.plugin.settings.previewMode=value;this.plugin.saveSettings();}))}},
-    {name:msg("ノート削除時に確認する"),render:setting=>{setting.addToggle(toggle=>toggle
+      .onChange((value)=>{this.plugin.settings.previewMode=value;this.plugin.saveSettings();}))}},
+    {name:msg("ノート削除時に確認する"),render:(setting)=>{setting.addToggle((toggle)=>toggle
       .setValue(this.plugin.settings.confirmDelete!==false)
-      .onChange(value=>{this.plugin.settings.confirmDelete=value;this.plugin.saveSettings();}))}},
-    {name:msg("新規ノートの作成日時"),desc:this.dateDescription(),render:setting=>{this.dateInfo=setting;setting.addText(text=>{
+      .onChange((value)=>{this.plugin.settings.confirmDelete=value;this.plugin.saveSettings();}))}},
+    {name:msg("新規ノートの作成日時"),desc:this.dateDescription(),render:(setting)=>{this.dateInfo=setting;setting.addText((text)=>{
       text.setValue(this.plugin.settings.creationTimeZone || '');
       text.inputEl.placeholder=msg("端末のタイムゾーン");
       text.inputEl.addEventListener('change',()=>{
@@ -2393,7 +2363,7 @@ class KeepViewSettings extends PluginSettingTab {
         this.plugin.settings.creationTimeZone=zone;this.plugin.saveSettings();updateDateInfo();
       });
     });}},
-    {name:msg("日時プロパティ"),desc:msg("ISO 8601 の日時を読むプロパティ名。空欄は created を使います。作成日時の検索・並び替えに使用します。未設定・無効はファイル作成日時でほかのノートと混ぜて並べ、期間指定にも含めます。"),render:setting=>{setting.addText(text=>{
+    {name:msg("日時プロパティ"),desc:msg("ISO 8601 の日時を読むプロパティ名。空欄は created を使います。作成日時の検索・並び替えに使用します。未設定・無効はファイル作成日時でほかのノートと混ぜて並べ、期間指定にも含めます。"),render:(setting)=>{setting.addText((text)=>{
         text.setValue(this.plugin.settings.dateProperty===DEFAULT_SETTINGS.dateProperty?'':this.plugin.settings.dateProperty);
         text.inputEl.placeholder=DEFAULT_SETTINGS.dateProperty;
         text.inputEl.addEventListener('change',()=>{
@@ -2402,11 +2372,11 @@ class KeepViewSettings extends PluginSettingTab {
           this.plugin.settings.dateProperty=property;this.plugin.saveSettings();updateDateInfo();
         });
       });}},
-    {name:msg("作成日時の案内"),desc:msg("日時プロパティが未設定・無効のとき、起動中に一度だけ案内します。オフにすると、案内用の追加確認も省きます。移行ツールは引き続き手動で開けます。"),render:setting=>{setting.addToggle(toggle=>toggle.setValue(this.plugin.settings.showDateGuidance!==false).onChange(value=>{this.plugin.settings.showDateGuidance=value;if(value) this.plugin.dateGuidanceShown?.clear();this.plugin.saveSettings();}));}},
-    {name:msg("高速全文検索"),desc:msg("ノート本文を圧縮して検索キャッシュに保存します。暗号化はされません。"),render:setting=>{setting.addToggle(toggle=>toggle.setValue(this.plugin.settings.fastSearch!==false)
-        .onChange(value=>{this.plugin.settings.fastSearch=value;this.plugin.saveSettings();}))}},
-    {name:msg("検索キャッシュ"),render:setting=>{setting.addButton(button=>button.setButtonText(msg("削除する")).onClick(()=>this.plugin.confirmClearSearchCache()))}},
-    {name:msg("Google Keep から日時を取り込む"),desc:msg("Importer などで Vault に取り込んだ Markdown ノートのファイル名から日時を取り込みます。対象フォルダと変換内容を確認してから適用できます。"),render:setting=>{setting.addButton(button=>button.setButtonText(msg("移行ツールを開く")).onClick(()=>this.plugin.openMigration()))}},
+    {name:msg("作成日時の案内"),desc:msg("日時プロパティが未設定・無効のとき、起動中に一度だけ案内します。オフにすると、案内用の追加確認も省きます。移行ツールは引き続き手動で開けます。"),render:(setting)=>{setting.addToggle((toggle)=>toggle.setValue(this.plugin.settings.showDateGuidance!==false).onChange((value)=>{this.plugin.settings.showDateGuidance=value;if(value) this.plugin.dateGuidanceShown?.clear();this.plugin.saveSettings();}));}},
+    {name:msg("高速全文検索"),desc:msg("ノート本文を圧縮して検索キャッシュに保存します。暗号化はされません。"),render:(setting)=>{setting.addToggle((toggle)=>toggle.setValue(this.plugin.settings.fastSearch!==false)
+        .onChange((value)=>{this.plugin.settings.fastSearch=value;this.plugin.saveSettings();}))}},
+    {name:msg("検索キャッシュ"),render:(setting)=>{setting.addButton((button)=>button.setButtonText(msg("削除する")).onClick(()=>this.plugin.confirmClearSearchCache()))}},
+    {name:msg("Google Keep から日時を取り込む"),desc:msg("Importer などで Vault に取り込んだ Markdown ノートのファイル名から日時を取り込みます。対象フォルダと変換内容を確認してから適用できます。"),render:(setting)=>{setting.addButton((button)=>button.setButtonText(msg("移行ツールを開く")).onClick(()=>this.plugin.openMigration()))}},
     ];
   }
   display() {
@@ -2421,10 +2391,11 @@ class KeepViewSettings extends PluginSettingTab {
 }
 
 class KeepView extends ItemView {
-  /** @type {ReturnType<typeof mountKeepView>|null} */
-  controller=null;
-  /** @param {import("obsidian").WorkspaceLeaf} leaf @param {KeepViewPlugin} plugin */
-  constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
+  declare plugin: KeepViewPlugin;
+
+  controller: ReturnType<typeof mountKeepView>|null=null;
+
+  constructor(leaf: WorkspaceLeaf, plugin: KeepViewPlugin) { super(leaf); this.plugin = plugin; }
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return msg('Keep View'); }
   getIcon() { return KEEP_VIEW_ICON; }
@@ -2432,34 +2403,34 @@ class KeepView extends ItemView {
     this.contentEl.empty();
     this.contentEl.addClass('keep-view-content');
     const root = this.contentEl.createDiv();
-    this.controller = mountKeepView(this.app, root, this.plugin.saved, state => this.plugin.saveState(state), this.plugin.settings, this.plugin.getSearchIndex(),{onHideDateGuidance:()=>this.plugin.saveSettings(),dateGuidanceShown:this.plugin.dateGuidanceShown});
+    this.controller = mountKeepView(this.app, root, this.plugin.saved, (state) => this.plugin.saveState(state), this.plugin.settings, this.plugin.getSearchIndex(),{onHideDateGuidance:()=>this.plugin.saveSettings(),dateGuidanceShown:this.plugin.dateGuidanceShown});
     const refresh = () => this.controller?.refresh();
     this.registerEvent(this.app.metadataCache.on('changed', refresh));
     this.registerEvent(this.app.metadataCache.on('resolved', refresh));
-    this.registerEvent(this.app.vault.on('create', file=>this.controller?.refresh(file)));
-    this.registerEvent(this.app.vault.on('delete', file=>this.controller?.refresh(file)));
-    this.registerEvent(this.app.vault.on('modify', file=>this.controller?.refresh(file)));
-    this.registerEvent(this.app.vault.on('rename',file=>this.controller?.refresh(file)));
+    this.registerEvent(this.app.vault.on('create', (file)=>this.controller?.refresh(file)));
+    this.registerEvent(this.app.vault.on('delete', (file)=>this.controller?.refresh(file)));
+    this.registerEvent(this.app.vault.on('modify', (file)=>this.controller?.refresh(file)));
+    this.registerEvent(this.app.vault.on('rename',(file)=>this.controller?.refresh(file)));
   }
   async onClose() { this.controller?.dispose(); this.controller = null; }
 }
 
 class KeepViewPlugin extends Plugin {
-  /** @type {Set<string>} */ dateGuidanceShown=new Set();
-  /** @type {Partial<SavedState>} */
-  saved={};
-  /** @type {import('./lib/types').Settings} */
-  settings={...DEFAULT_SETTINGS};
-  /** @type {SearchIndex|null} */
-  searchIndex=null;
-  /** @type {KeepViewSettings|null} */
-  settingsTab=null;
-  /** @type {MigrationModal|null} */
-  migrationModal=null;
-  /** @type {CacheDeleteModal|null} */
-  cacheDeleteModal=null;
-  /** @type {string|null} */
-  lastSaved=null;
+   dateGuidanceShown: Set<string>=new Set();
+
+  saved: Partial<SavedState>={};
+
+  settings: Settings={...DEFAULT_SETTINGS};
+
+  searchIndex: SearchIndex|null=null;
+
+  settingsTab: KeepViewSettings|null=null;
+
+  migrationModal: MigrationModal|null=null;
+
+  cacheDeleteModal: CacheDeleteModal|null=null;
+
+  lastSaved: string|null=null;
   saveQueue=Promise.resolve();
   async onload() {
     addIcon(KEEP_VIEW_ICON, KEEP_VIEW_ICON_SVG);
@@ -2479,7 +2450,7 @@ class KeepViewPlugin extends Plugin {
     if(!['markdown','source'].includes(this.settings.previewMode)) this.settings.previewMode='markdown';
     if (!validatePropertyName(this.settings.dateProperty)) this.settings.dateProperty='created';
     this.saveQueue = Promise.resolve();
-    this.registerView(VIEW_TYPE, leaf => new KeepView(leaf, this));
+    this.registerView(VIEW_TYPE, (leaf) => new KeepView(leaf, this));
     const ribbon=this.addRibbonIcon(KEEP_VIEW_ICON, msg('Keep View'), () => this.activate());
     ribbon?.removeAttribute('title');
     this.addCommand({id:'open', name:msg('Open Keep View'), callback:() => this.activate()});
@@ -2501,8 +2472,8 @@ class KeepViewPlugin extends Plugin {
     this.saveSettings();
     if(refreshTab && this.settingsTab?.containerEl?.isConnected) this.settingsTab.display();
   }
-  /** @param {SavedState} state */
-  saveState(state) {
+
+  saveState(state: SavedState) {
     const serialized = JSON.stringify(state);
     if (serialized === this.lastSaved) return;
     this.lastSaved = serialized;
@@ -2514,16 +2485,17 @@ class KeepViewPlugin extends Plugin {
     if(!this.searchIndex) {
       const directory=this.manifest.dir || `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
       this.searchIndex=new SearchIndex(this.app,`${directory}/search-cache-v1`);
-      this.registerEvent(this.app.vault.on('create',file=>this.searchIndex.invalidate(file.path)));
-      this.registerEvent(this.app.vault.on('modify',file=>this.searchIndex.invalidate(file.path)));
-      this.registerEvent(this.app.vault.on('delete',file=>this.searchIndex.invalidate(file.path)));
-      this.registerEvent(this.app.vault.on('rename',(file,oldPath)=>{this.searchIndex.invalidate(file.path);this.searchIndex.invalidate(oldPath);}));
+      const index=this.searchIndex;
+      this.registerEvent(this.app.vault.on('create',(file)=>index.invalidate(file.path)));
+      this.registerEvent(this.app.vault.on('modify',(file)=>index.invalidate(file.path)));
+      this.registerEvent(this.app.vault.on('delete',(file)=>index.invalidate(file.path)));
+      this.registerEvent(this.app.vault.on('rename',(file,oldPath)=>{index.invalidate(file.path);index.invalidate(oldPath);}));
     }
     return this.searchIndex;
   }
   queueSave() {
     const snapshot=clone({state:this.saved,settings:this.settings});
-    this.saveQueue=this.saveQueue.then(()=>this.saveData(snapshot)).catch(error=>{this.lastSaved=null;console.error('Keep View Explorer: save failed',error);new Notice(msg("Keep View の設定を保存できませんでした"));});
+    this.saveQueue=this.saveQueue.then(()=>this.saveData(snapshot)).catch((error)=>{this.lastSaved=null;console.error('Keep View Explorer: save failed',error);new Notice(msg("Keep View の設定を保存できませんでした"));});
   }
   saveSettings() {
     setLanguage(this.settings.language==='auto'?(getLanguage?.() || 'en'):this.settings.language || getLanguage?.() || 'en');
@@ -2534,7 +2506,7 @@ class KeepViewPlugin extends Plugin {
     }
   }
   async clearSearchCache() {
-    const controllers=this.app.workspace.getLeavesOfType(VIEW_TYPE).map(leaf=>(leaf.view instanceof KeepView?leaf.view.controller:null)).filter(Boolean);
+    const controllers=this.app.workspace.getLeavesOfType(VIEW_TYPE).map((leaf)=>(leaf.view instanceof KeepView?leaf.view.controller:null)).filter((controller): controller is NonNullable<typeof controller>=>controller!==null);
     for(const controller of controllers) controller.setSearchIndex(null,{pause:true});
     const directory=this.manifest.dir || `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
     const index=this.searchIndex || new SearchIndex(this.app,`${directory}/search-cache-v1`);

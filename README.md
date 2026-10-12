@@ -50,7 +50,7 @@ For manual installation, use the built release assets:
 3. Enable community plugins and Keep View Explorer in Obsidian settings.
 4. Open Keep View Explorer using its ribbon icon or the **Open Keep View Explorer** command.
 
-When updating manually, disable the plugin, replace these three files, then enable it again. Preserve `data.json`. The repository's source `main.js` uses local modules; install the release assets or the files in `dist/keep-view/`.
+When updating manually, disable the plugin, replace these three files, then enable it again. Preserve `data.json`. The repository's source `main.ts` uses TypeScript and local modules; install the release assets or the files in `dist/keep-view/`.
 
 ## Usage
 

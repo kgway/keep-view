@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {formatPathExport}=require('../lib/path-export');
+const {formatPathExport}=require('./load-source.cjs').loadSource('../lib/path-export');
 
 test('path export omits device paths by default and includes them only when requested',()=>{
   const payload={schema:'keep-view-paths/v1',paths:['Notes/日本語 # [x].md','root.md'],vaultRoot:'private old root'};

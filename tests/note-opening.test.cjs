@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {openNoteInForeground}=require('../lib/note-opening');
+const {openNoteInForeground}=require('./load-source.cjs').loadSource('../lib/note-opening');
 
 test('foreground note opening overrides background preference and reveals the same loaded leaf',async()=>{
   const file={path:'notes/example.md'},events=[];

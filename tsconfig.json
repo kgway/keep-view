@@ -1,16 +1,29 @@
 {
   "compilerOptions": {
-    "allowJs": true,
-    "checkJs": true,
     "strictBindCallApply": true,
     "resolveJsonModule": true,
     "noEmit": true,
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "skipLibCheck": true
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true
   },
-  "include": ["main.js", "lib/**/*.js"],
-  "exclude": ["node_modules", "dist", ".artifacts", ".local"]
+  "include": [
+    "main.ts",
+    "lib/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".artifacts",
+    ".local"
+  ]
 }

@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {gzipSync,gunzipSync,strToU8}=require('fflate');
-const {encodeBucket,decodeBucket}=require('../lib/search-codec');
+const {encodeBucket,decodeBucket}=require('./load-source.cjs').loadSource('../lib/search-codec');
 
 test('compact storage round-trips Unicode, whitespace, controls, paths and timestamps exactly',async()=>{
   const texts=['','plain ASCII text','日本語の買い物メモ。\n'.repeat(100),'cafe\u0301 😀 👩‍💻 [.*] a b\r\n\t\u0000\ud800',Array.from({length:65536},(_,code)=>String.fromCharCode(code)).join('')];

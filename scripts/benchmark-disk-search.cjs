@@ -1,6 +1,6 @@
 const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
-const {SearchIndex}=require('../lib/search-index');
-const {CardSearch}=require('../lib/card-search');
+const {SearchIndex}=require('../tests/load-source.cjs').loadSource('../lib/search-index');
+const {CardSearch}=require('../tests/load-source.cjs').loadSource('../lib/card-search');
 const {files,texts}=require('./search-fixture.cjs').createSearchFixture();
 
 (async()=>{

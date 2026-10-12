@@ -6,10 +6,10 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const root=path.resolve(__dirname,'..');
 const host=process.env.KEEP_VIEW_HOST_CSS||path.join(root,'.artifacts/host-css/obsidian.css');
 const theme=process.env.KEEP_VIEW_THEME_CSS||path.join(root,'.artifacts/host-css/minimal.css');
-const sources=Object.fromEntries(fs.readdirSync(path.join(root,'lib')).filter(name=>/\.(js|json)$/.test(name)).map(name=>[
+const sources=Object.fromEntries(fs.readdirSync(path.join(root,'lib')).filter(name=>/\.(ts|json)$/.test(name)).map(name=>[
   './lib/'+(name.endsWith('.json')?name:name.slice(0,-3)),name.endsWith('.json')?'module.exports='+fs.readFileSync(path.join(root,'lib',name),'utf8'):compileSource(fs.readFileSync(path.join(root,'lib',name),'utf8'))
 ]));
-sources.main=compileSource(fs.readFileSync(path.join(root,'main.js'),'utf8'))+'\nmodule.exports={TextSearchModal,PathExportModal,KeepViewSettings,CreationDateModal,DEFAULT_SETTINGS};';
+sources.main=compileSource(fs.readFileSync(path.join(root,'main.ts'),'utf8'))+'\nmodule.exports={TextSearchModal,PathExportModal,KeepViewSettings,CreationDateModal,DEFAULT_SETTINGS};';
 const screenshots=path.join(root,'.artifacts/ui');
 fs.mkdirSync(screenshots,{recursive:true});
 (async()=>{

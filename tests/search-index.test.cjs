@@ -1,9 +1,9 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {SearchIndex,bucketFor}=require('../lib/search-index');
-const {CardSearch}=require('../lib/card-search');
+const {SearchIndex,bucketFor}=require('./load-source.cjs').loadSource('../lib/search-index');
+const {CardSearch}=require('./load-source.cjs').loadSource('../lib/card-search');
 const {gzipSync,strToU8}=require('fflate');
-const {decodeBucket,encodeBucket}=require('../lib/search-codec');
+const {decodeBucket,encodeBucket}=require('./load-source.cjs').loadSource('../lib/search-codec');
 
 function fixture(texts) {
   const files=texts.map((text,i)=>({path:`${i}.md`,basename:`note${i}`,stat:{mtime:1,size:text.length}}));

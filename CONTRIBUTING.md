@@ -11,6 +11,8 @@ pnpm test:ui
 
 Use synthetic notes and relative vault paths in reports, screenshots and tests. Keep personal account details, tokens, vault data and host application files out of commits. Browser screenshots are local artifacts and are ignored.
 
+Source changes belong in `main.ts` and `lib/*.ts`. Run `pnpm check` for strict TypeScript checking and `pnpm lint` for the Obsidian rules. Keep runtime validation for saved data and host API values; do not replace it with type assertions or `any`. The install file is built JavaScript, not the TypeScript source.
+
 For text changes, edit values in `lib/ja.json` or `lib/en.json`, preserving keys and numbered placeholders. Run tests and rebuild after editing.
 
 For implementation changes, follow [ARCHITECTURE.md](ARCHITECTURE.md). Describe what changed and how it was verified in your pull request. Existing browser tests use Obsidian mocks; actual desktop/mobile testing remains necessary.
