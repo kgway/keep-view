@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.43.9 — TypeScript source
+
+- Move the plugin source to TypeScript with strict type checking and shared data types.
+- Update the build, tests and source export while retaining the JavaScript install file, plugin ID and saved settings.
+- Guard unavailable browser selections and optional popup callbacks.
+- Align the manifest introduction with the community listing.
+
 ## 1.43.8 — creation date ranges
 
 - Include notes with missing or invalid creation properties in date ranges using file creation time, matching the sorting behavior.

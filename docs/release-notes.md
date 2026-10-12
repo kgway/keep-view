@@ -1,6 +1,13 @@
 # Keep View Explorer
 
-## Changes since 1.43.4
+## Changes in 1.43.9
+
+- Move the source to TypeScript with strict type checking.
+- Preserve the plugin ID, saved settings and JavaScript install format.
+- Handle unavailable browser selections and optional popup callbacks safely.
+- Align the manifest introduction with the community listing.
+
+## Recent changes
 
 - Start new views with the newest modified notes while preserving saved choices.
 - Use file creation time for missing or invalid creation dates, both when sorting together with other notes and when filtering by date range.

@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {CardSearch}=require('../lib/card-search');
+const {CardSearch}=require('./load-source.cjs').loadSource('../lib/card-search');
 
 function fixture(texts,options={}) {
   const files=texts.map((text,i)=>({path:`${i}.md`,basename:`note${i}`,stat:{mtime:1,size:text.length}}));

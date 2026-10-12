@@ -1,5 +1,5 @@
 const {performance}=require('node:perf_hooks');
-const {normalizeSearch}=require('../lib/card-search');
+const {normalizeSearch}=require('../tests/load-source.cjs').loadSource('../lib/card-search');
 const {writeFileSync,mkdirSync}=require('node:fs');
 
 const {texts,files,count}=require('./search-fixture.cjs').createSearchFixture();
@@ -7,7 +7,7 @@ const byPath=new Map(files.map(file=>[file.path,file]));
 let reads=0;
 const app={vault:{getAbstractFileByPath:path=>byPath.get(path),cachedRead:async file=>{reads++;return texts[file.index];}}};
 
-const {SearchIndex}=require('../lib/search-index');
+const {SearchIndex}=require('../tests/load-source.cjs').loadSource('../lib/search-index');
 const disk=new Map();let loads=0,writes=0;
 app.vault.adapter={exists:async path=>disk.has(path),mkdir:async path=>disk.set(path,null),readBinary:async path=>{loads++;return disk.get(path);},writeBinary:async(path,data)=>{writes++;disk.set(path,data);}};
 const open=()=>new SearchIndex(app,'cache',{yieldTask:()=>new Promise(resolve=>setImmediate(resolve))});

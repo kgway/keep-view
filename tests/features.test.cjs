@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 function runSource(code,context) {return vm.runInNewContext(compileSource(code),context);}
-const source = fs.readFileSync(require('node:path').join(__dirname,'..','main.js'),'utf8');
+const source = fs.readFileSync(require('node:path').join(__dirname,'..','main.ts'),'utf8');
 const sandbox={module:{exports:{}},require:()=>({Plugin:class{},ItemView:class{},Modal:class{},PluginSettingTab:class{}}),Date,console};
 runSource(source+"\nconst {moveSelectedNotes}=require('./lib/note-operations');\n"+'module.exports={parseIsoTimestamp,timestampFromFilename,migrateCreated,masonryPositions,makePathExport,resultFolderTree,markdownBody,previewLengths,createNote,localIsoTimestamp,editNoteTags,restoreTagChanges,moveSelectedNotes,moveSelection,trashSelectedNotes,DEFAULT_SETTINGS};',installModules(sandbox));
 const {parseIsoTimestamp:parse,timestampFromFilename:fromName,migrateCreated,masonryPositions,makePathExport}=sandbox.module.exports;

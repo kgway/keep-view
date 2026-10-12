@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {readState,readSettings}=require('../lib/saved-data');
+const {readState,readSettings}=require('./load-source.cjs').loadSource('../lib/saved-data');
 test('saved data preserves supported state and rejects invalid or transient fields',()=>{
   const tree={type:'and',id:'root',children:[{type:'tag',id:'note',tag:'work/sub'}]};
   const saved={searchTree:tree,textQuery:'query',folderFilters:['Work',42],previewChars:150,groupByFolder:true,folderGroupState:JSON.parse('{"Work":true,"__proto__":true,"bad":"yes"}'),contentCache:{private:'must not restore'},undoStack:['must not restore']};

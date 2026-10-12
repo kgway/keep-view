@@ -1,30 +1,44 @@
+import type {App, TFile} from "obsidian";
+import type {Bucket, CacheEntry, CachedMatch, ProgressCallback, SearchResult} from "./types";
 
-import {encodeBucket,decodeBucket} from "./search-codec.js";
+import {encodeBucket,decodeBucket} from "./search-codec";
 const BUCKETS=8,LEGACY_BUCKETS=64;
-/** @param {unknown} value */
-const normalize=value=>String(value).normalize('NFC').toLowerCase();
-/** @param {string} value */
-const hash=value=>{
+
+const normalize=(value: unknown)=>String(value).normalize('NFC').toLowerCase();
+
+const hash=(value: string)=>{
   let result=2166136261;
   for(let i=0;i<value.length;i++) result=Math.imul(result^value.charCodeAt(i),16777619);
   return result>>>0;
 };
-/** @param {string} path */
-const bucketFor=path=>hash(path)%BUCKETS;
+
+const bucketFor=(path: string)=>hash(path)%BUCKETS;
 
 class SearchIndex {
+  declare app: App;
+  declare directory: string;
+  declare yieldTask: () => Promise<void>;
+  declare memoryLimit: number;
+  declare buckets: Map<number, Bucket>;
+  declare invalidated: Map<string, number>;
+  declare revision: number;
+  declare tail: Promise<unknown>;
+  declare query: string;
+  declare results: Map<string, CachedMatch>;
+  declare migrated: boolean;
+
   static supported() {return typeof CompressionStream!=='undefined' && typeof DecompressionStream!=='undefined';}
-  /** @param {import('obsidian').App} app @param {string} directory @param {{yieldTask?:()=>Promise<void>,memoryLimit?:number}} options */
-  constructor(app,directory,{yieldTask=()=>new Promise(resolve=>(typeof window==='undefined'?setTimeout:window.setTimeout)(resolve,0)),memoryLimit=12*1024*1024}={}) {
+
+  constructor(app: App,directory: string,{yieldTask=()=>new Promise((resolve)=>(typeof window==='undefined'?setTimeout:window.setTimeout)(resolve,0)),memoryLimit=12*1024*1024}: {yieldTask?:()=>Promise<void>,memoryLimit?:number}={}) {
     this.app=app;this.directory=directory;this.yieldTask=yieldTask;this.memoryLimit=memoryLimit;
-    this.buckets=/** @type {Map<number,import('./types').Bucket>} */ (new Map());this.invalidated=/** @type {Map<string,number>} */ (new Map());this.revision=0;this.tail=/** @type {Promise<unknown>} */ (Promise.resolve());
-    this.query='';this.results=/** @type {Map<string,import('./types').CachedMatch>} */ (new Map());
+    this.buckets= (new Map() as Map<number,Bucket>);this.invalidated= (new Map() as Map<string,number>);this.revision=0;this.tail= (Promise.resolve() as Promise<unknown>);
+    this.query='';this.results= (new Map() as Map<string,CachedMatch>);
     this.migrated=false;
   }
-  /** @param {string} path */
-  invalidate(path) {this.invalidated.set(path,++this.revision);this.results.delete(path);}
-  /** @param {string} query @param {import('obsidian').TFile[]} files @param {{cancelled?:()=>boolean,onProgress?:import('./types').ProgressCallback}} options */
-  search(query,files,{cancelled=()=>false,onProgress=()=>{}}={}) {
+
+  invalidate(path: string) {this.invalidated.set(path,++this.revision);this.results.delete(path);}
+
+  search(query: string,files: TFile[],{cancelled=()=>false,onProgress=()=>{}}: {cancelled?:()=>boolean,onProgress?:ProgressCallback}={}) {
     const result=this.tail.then(()=>this.run(query,files,{cancelled,onProgress}));
     this.tail=result.catch(()=>{});
     return result;
@@ -43,12 +57,12 @@ class SearchIndex {
     this.tail=work.catch(()=>{});
     return work;
   }
-  /** @param {number} id @returns {Promise<import('./types').Bucket>} */
-  async load(id) {
+
+  async load(id: number): Promise<Bucket> {
     if(this.buckets.has(id)) {
-      const bucket=this.buckets.get(id);this.buckets.delete(id);this.buckets.set(id,bucket);return bucket;
+      const bucket=this.buckets.get(id)!;this.buckets.delete(id);this.buckets.set(id,bucket);return bucket;
     }
-    const bucket=/** @type {import('./types').Bucket} */ ({entries:new Map(),dirty:false,bytes:0});
+    const bucket= ({entries:new Map(),dirty:false,bytes:0} as Bucket);
     try {
       const adapter=this.app.vault.adapter,path=`${this.directory}/bucket-${id}.gz`;
       if(await adapter.exists(path)) {
@@ -63,8 +77,8 @@ class SearchIndex {
     } catch {bucket.entries.clear();bucket.bytes=0;}
     this.buckets.set(id,bucket);return bucket;
   }
-  /** @param {()=>boolean} cancelled */
-  async migrate(cancelled) {
+
+  async migrate(cancelled: ()=>boolean) {
     if(this.migrated) return;
     const adapter=this.app.vault.adapter;
     for(let id=0;id<BUCKETS;id++) {
@@ -74,7 +88,7 @@ class SearchIndex {
       if(!old.length) continue;
       const bucket=await this.load(id);
       for(const path of old) {
-        const legacy=Number(path.split('/').pop().split('.')[0]);
+        const legacy=Number(path.split('/').pop()!.split('.')[0]);
         let data;
         try {data=await decodeBucket(new Uint8Array(await adapter.readBinary(path)));} catch {continue;}
         for(const [note,entry] of data.entries) {
@@ -99,10 +113,10 @@ class SearchIndex {
       bytes-=bucket.bytes;this.buckets.delete(id);
     }
   }
-  /** @param {number} id @param {import('./types').Bucket} bucket */
-  async save(id,bucket) {
+
+  async save(id: number,bucket: Bucket) {
     if(!bucket.dirty) return;
-    const entries=[...bucket.entries].map(([path,{epoch,...entry}])=>/** @type {[string,import('./types').CacheEntry]} */ ([path,entry]));
+    const entries=[...bucket.entries].map(([path,{epoch,...entry}])=> ([path,entry] as [string,CacheEntry]));
     const epochs=new Map([...bucket.entries].map(([path,entry])=>[path,entry.epoch]));
     const adapter=this.app.vault.adapter;
     if(!await adapter.exists(this.directory)) await adapter.mkdir(this.directory);
@@ -110,13 +124,13 @@ class SearchIndex {
     const compressed=await encodeBucket(entries);
     await adapter.writeBinary(`${this.directory}/bucket-${id}.gz`,compressed.buffer.slice(compressed.byteOffset,compressed.byteOffset+compressed.byteLength));
     for(const [path,epoch] of epochs) if((this.invalidated.get(path)||0)===epoch) {
-      this.invalidated.delete(path);bucket.entries.get(path).epoch=0;
+      this.invalidated.delete(path);bucket.entries.get(path)!.epoch=0;
     }
     bucket.dirty=false;
   }
-  /** @param {string} query @param {import('obsidian').TFile[]} files @param {{cancelled:()=>boolean,onProgress:import('./types').ProgressCallback}} options @returns {Promise<import('./types').SearchResult>} */
-  async run(query,files,{cancelled,onProgress}) {
-    const matches=new Set(/** @type {string[]} */ ([])),settled=new Set(/** @type {string[]} */ ([])),errors=/** @type {string[]} */ ([]),groups=/** @type {Map<number,import('obsidian').TFile[]>} */ (new Map());let completed=0,storageError=false;
+
+  async run(query: string,files: TFile[],{cancelled,onProgress}: {cancelled:()=>boolean,onProgress:ProgressCallback}): Promise<SearchResult> {
+    const matches=new Set( ([] as string[])),settled=new Set( ([] as string[])),errors= ([] as string[]),groups= (new Map() as Map<number,TFile[]>);let completed=0,storageError=false;
     try {await this.migrate(cancelled);} catch {storageError=true;}
     const report=()=>{if(!cancelled()) onProgress(completed,files.length,{matches,settled});};
     if(query!==this.query) {this.query=query;this.results.clear();}
@@ -129,7 +143,7 @@ class SearchIndex {
       }
       const id=bucketFor(file.path);
       if(!groups.has(id)) groups.set(id,[]);
-      groups.get(id).push(file);
+      groups.get(id)!.push(file);
     }
     report();
     let started=Date.now();
@@ -150,7 +164,7 @@ class SearchIndex {
           const match=normalize(file.basename).includes(query) || entry.text.includes(query);
           if(match) matches.add(path);
           const oldest=this.results.keys().next();
-          const oldestPath=/** @type {unknown} */ (oldest.value);
+          const oldestPath= (oldest.value as unknown);
           if(this.results.size>=10000 && typeof oldestPath==='string') this.results.delete(oldestPath);
           this.results.set(path,{file,mtime,size,match});
         } catch {bucket.entries.delete(path);bucket.dirty=true;errors.push(path);}

@@ -77,7 +77,7 @@ const geometry=el=>{
           if(cls)item.classList.add(cls);
           let checked=true;item.onclick=()=>{checked=!checked;item.querySelector('input').checked=checked;};
         }
-      },compileSource(fs.readFileSync(path.join(root,'lib/ui.js'),'utf8')));
+      },compileSource(fs.readFileSync(path.join(root,'lib/ui.ts'),'utf8')));
       const offsets=await page.locator('.kv-dropdown-checkbox').evaluateAll(els=>els.map(el=>{
         const input=el.getBoundingClientRect(),mark=el.parentElement.querySelector('.kv-checkbox-mark').getBoundingClientRect();
         return {box:[input.width,input.height],mark:[mark.left-input.left,mark.top-input.top,mark.width,mark.height],native:getComputedStyle(el,'::after').display};

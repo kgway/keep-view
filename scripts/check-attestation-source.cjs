@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const {execFileSync}=require('node:child_process');
 
 function checkSource(env,manifest,head) {
-  assert.equal(env.GITHUB_REPOSITORY,'kgway/keep-view','Attestations belong to the public distribution repository');
+  assert.equal(env.GITHUB_REPOSITORY,'kgway/keep-view-explorer','Attestations belong to the public distribution repository');
   assert.equal(env.GITHUB_EVENT_NAME,'workflow_dispatch','Preparation requires an explicit dispatch');
   assert.equal(env.GITHUB_REF,'refs/heads/main','Use the protected main branch');
   assert.match(env.EXPECTED_COMMIT||'',/^[a-f0-9]{40}$/,'Supply the full reviewed commit SHA');

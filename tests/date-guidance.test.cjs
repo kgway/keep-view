@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {DateGuidance}=require('../lib/date-guidance');
+const {DateGuidance}=require('./load-source.cjs').loadSource('../lib/date-guidance');
 const page=(name,property=null,propertyPresent=false,metadataReady=true)=>({file:{name,property,propertyPresent,metadataReady}});
 
 test('disabled date guidance does not request pages or inspect filenames',()=>{

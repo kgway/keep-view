@@ -14,7 +14,7 @@ function installModules(context) {
     if(!cache.has(id)) {
       const module={exports:{}};
       cache.set(id,module);
-      const filename=path.join(__dirname,'..',id+(id.endsWith('.json')?'':'.js'));
+      const filename=path.join(__dirname,'..',id+(id.endsWith('.json')?'':'.ts'));
       if(id.endsWith('.json')) module.exports=JSON.parse(fs.readFileSync(filename,'utf8'));
       else vm.runInNewContext(compileSource(fs.readFileSync(filename,'utf8')),{...context,module,exports:module.exports},{filename});
       if(id==='./lib/i18n') module.exports.setLanguage('ja');
