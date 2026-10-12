@@ -203,18 +203,18 @@ const selectedFolders=new Set( ([] as string[]));
 let selectionMode=false,selectionBusy=false;
 const draftDirty=()=>{const draft=tagDraft;return draft && (draft.checked.length!==draft.common.length || draft.checked.some((tag)=>!draft.common.includes(tag)));};
 const updateSelection=()=>{
-  for(const card of  (container.querySelectorAll('.kv-card') as NodeListOf<HTMLElement>)) {
+  for(const card of container.querySelectorAll<HTMLElement>('.kv-card')) {
     const selected=selectedPaths.has(card.dataset.path!);card.classList.toggle('is-selected',selected);
     card.setAttribute('aria-label',`${card.dataset.path}${selected?msg("（選択中）"):''}`);
   }
-  for(const row of  (container.querySelectorAll('.kv-result-folder') as NodeListOf<HTMLButtonElement & {_selectionPaths?:string[]}>)) {
+  for(const row of container.querySelectorAll<HTMLButtonElement & {_selectionPaths?:string[]}>('.kv-result-folder')) {
     const paths=row._selectionPaths||[],count=paths.filter((path)=>selectedPaths.has(path)).length;
     row.classList.toggle('is-selected',count>0 && count===paths.length);
     row.classList.toggle('is-partial',count>0 && count<paths.length);
     row.setAttribute('aria-pressed',count===0?'false':count===paths.length?'true':'mixed');
   }
   if(!selectionBar) return;
-  const controls= (container.querySelector('.kv-controls') as HTMLElement|null);
+  const controls=container.querySelector<HTMLElement>('.kv-controls');
   if(controls) controls.inert=selectionBusy;
   selectionBar.hidden=!selectionMode;
    (selectionBar.querySelector('.kv-selection-count') as HTMLElement).textContent=msg("{0} 件選択", [selectedPaths.size]);
@@ -226,7 +226,7 @@ const updateSelection=()=>{
   const confirm= (selectionBar.querySelector('.kv-selection-confirm') as HTMLButtonElement);
   confirm.hidden=!draftDirty() && moveDraft===null;confirm.disabled=selectionBusy || !selectedPaths.size;
   for(const [selector,stack] of  ([['.kv-undo',S.undoStack],['.kv-redo',S.redoStack]] as [string,Snapshot[]][])) {
-    for(const button of  (container.querySelectorAll(selector) as NodeListOf<HTMLButtonElement>)) button.disabled=selectionBusy || !stack.length;
+    for(const button of container.querySelectorAll<HTMLButtonElement>(selector)) button.disabled=selectionBusy || !stack.length;
   }
 };
 
@@ -1250,7 +1250,7 @@ let previewMeasureContext: CanvasRenderingContext2D|null|undefined;
 const fitPreviewLabels=()=>{
   previewMeasureContext??=window.createEl('canvas').getContext('2d');
   if(!previewMeasureContext) return;
-  for(const select of  (container.querySelectorAll('.kv-preview-select') as NodeListOf<HTMLSelectElement>)) {
+  for(const select of container.querySelectorAll<HTMLSelectElement>('.kv-preview-select')) {
     const style=window.getComputedStyle(select),context=previewMeasureContext;
     context.font='12px '+style.fontFamily;
     const available=select.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);
@@ -1365,7 +1365,7 @@ const buildMasonry = (container: HTMLElement, pages: Page[]) => {
         for(const element of preview.querySelectorAll('[title]')) element.removeAttribute('title');
         // Keep diagram coordinates at their rendered size instead of shrinking
         // every label to fit a narrow card. The diagram can scroll horizontally.
-        for(const svg of  (preview.querySelectorAll('.mermaid svg') as NodeListOf<SVGSVGElement>)) {
+        for(const svg of preview.querySelectorAll<SVGSVGElement>('.mermaid svg')) {
           const bounds=svg.viewBox?.baseVal;
           if(bounds?.width>0 && bounds.height>0) {
             svg.style.width=bounds.width+'px';svg.style.height=bounds.height+'px';svg.classList.add('kv-measured-svg');
@@ -1413,7 +1413,7 @@ const buildMasonry = (container: HTMLElement, pages: Page[]) => {
         }
         requestLayout();
       };
-      if(content.loading) {preview.textContent=msg("読み込み中...");content.promise.then(updatePreview);}
+      if(content.loading) {preview.textContent=msg("読み込み中...");content.promise.then(updatePreview).catch(()=>{if(!stopped) {preview.textContent=msg("プレビューを読み込めませんでした");requestLayout();}});}
       else updatePreview();
     }
 
@@ -1444,7 +1444,7 @@ const buildMasonry = (container: HTMLElement, pages: Page[]) => {
     const gap = parseFloat(window.getComputedStyle(masonry).getPropertyValue('--kv-card-gap')) || 12;
     const width = Math.max(1,(masonry.clientWidth-gap*(columns-1))/columns);
     for (const card of cards) card.style.width = width+'px';
-    for(const card of cards) {const preview= (card.querySelector('.kv-card-preview') as HTMLElement & {_syncScrollbar?:()=>void}|null);if(preview) {preview.classList.toggle('is-scrollable',preview.scrollHeight>preview.clientHeight+1);preview._syncScrollbar?.();}}
+    for(const card of cards) {const preview=card.querySelector<HTMLElement & {_syncScrollbar?:()=>void}>('.kv-card-preview');if(preview) {preview.classList.toggle('is-scrollable',preview.scrollHeight>preview.clientHeight+1);preview._syncScrollbar?.();}}
     const {positions,height} = masonryPositions(cards.map((card)=>card.getBoundingClientRect().height),columns,gap);
     cards.forEach((card,index) => {
       const {column,top} = positions[index];
@@ -1567,7 +1567,7 @@ const treeFolderPaths = () => {
   return collect(resultFolderTree(filteredPages()));
 };
 const updateTreeAction = () => {
-  const button= (container.querySelector('.kv-collapse-all') as HTMLButtonElement|null);if(!button) return;
+  const button=container.querySelector<HTMLButtonElement>('.kv-collapse-all');if(!button) return;
   const paths=treeFolderPaths(),open=paths.some((path)=>S.resultTreeOpen[path]===true);
   button.empty();setIcon(button,open?'chevrons-down-up':'chevrons-up-down');
   button.setAttribute('aria-label',msg(open?'すべて折りたたむ':'すべて展開'));button.disabled=!paths.length;
@@ -1708,9 +1708,10 @@ const preserveScroll = (element: HTMLElement) => {
   return ()=>{
     if(scroller) scroller.scrollTop=top!;
     const loading=Object.values(S.contentCache).filter((entry)=>entry.loading).map((entry)=>entry.promise);
-    Promise.all(loading).then(()=>{if(disposed) return;setTimeout(()=>{
+    const release=()=>{if(disposed) return;setTimeout(()=>{
       if(scrollGuards.get(element)===token) element.style.removeProperty('min-height');
-    },100);});
+    },100);};
+    Promise.all(loading).then(release,release);
   };
 };
 
@@ -1723,7 +1724,7 @@ const render = () => {
   if (_activePopup && !_activePopup._isFolderDropdown) closePopup();
 
   const root = container;
-  const oldInput =  (root.querySelector('.kv-formula-input') as HTMLInputElement|null);
+  const oldInput=root.querySelector<HTMLInputElement>('.kv-formula-input');
   const focused = document.activeElement === oldInput;
   const draft = oldInput?.value;
   const selection = oldInput ? [oldInput.selectionStart, oldInput.selectionEnd] : null;
@@ -2149,9 +2150,9 @@ class TextSearchModal extends KeepViewModal {
     // Do not move focus before the tap completes: a closing mobile keyboard can
     // otherwise move the button out from under the user's finger.
     for(const button of [search,clear]) button.onpointerdown=(event)=>event.preventDefault();
-    search.onclick=()=>commit(input.value.trim());
-    clear.onclick=()=>{input.value='';commit('');};
-    form.onsubmit=(event)=>{event.preventDefault();commit(input.value.trim());};
+    search.onclick=()=>{void commit(input.value.trim());};
+    clear.onclick=()=>{input.value='';void commit('');};
+    form.onsubmit=(event)=>{event.preventDefault();void commit(input.value.trim());};
     input.focus();input.select();
   }
   onClose() {this.tooltipCleanup();this.contentEl.empty();}
@@ -2326,7 +2327,7 @@ class KeepViewSettings extends PluginSettingTab {
     if(typeof requireApiVersion==='function') {
       if(requireApiVersion('1.13.0')) {this.update();return;}
     }
-    this.display();
+    this.renderLegacySettings();
   }
 
   getSettingDefinitions(): SettingRow[] {
@@ -2379,7 +2380,8 @@ class KeepViewSettings extends PluginSettingTab {
     {name:msg("Google Keep から日時を取り込む"),desc:msg("Importer などで Vault に取り込んだ Markdown ノートのファイル名から日時を取り込みます。対象フォルダと変換内容を確認してから適用できます。"),render:(setting)=>{setting.addButton((button)=>button.setButtonText(msg("移行ツールを開く")).onClick(()=>this.plugin.openMigration()))}},
     ];
   }
-  display() {
+  display() {this.renderLegacySettings();}
+  renderLegacySettings() {
     this.containerEl.empty();this.containerEl.classList?.add('kv-settings');
     this.plugin.syncAppLanguage?.(false);
     for(const definition of this.getSettingDefinitions()) {
@@ -2470,7 +2472,7 @@ class KeepViewPlugin extends Plugin {
     this.settings.obsidianLanguage=appLanguage;
     this.settings.language='auto';
     this.saveSettings();
-    if(refreshTab && this.settingsTab?.containerEl?.isConnected) this.settingsTab.display();
+    if(refreshTab && this.settingsTab?.containerEl?.isConnected) this.settingsTab.redisplay();
   }
 
   saveState(state: SavedState) {

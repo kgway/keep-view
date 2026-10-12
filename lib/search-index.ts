@@ -31,7 +31,7 @@ class SearchIndex {
 
   constructor(app: App,directory: string,{yieldTask=()=>new Promise((resolve)=>(typeof window==='undefined'?setTimeout:window.setTimeout)(resolve,0)),memoryLimit=12*1024*1024}: {yieldTask?:()=>Promise<void>,memoryLimit?:number}={}) {
     this.app=app;this.directory=directory;this.yieldTask=yieldTask;this.memoryLimit=memoryLimit;
-    this.buckets= (new Map() as Map<number,Bucket>);this.invalidated= (new Map() as Map<string,number>);this.revision=0;this.tail= (Promise.resolve() as Promise<unknown>);
+    this.buckets= (new Map() as Map<number,Bucket>);this.invalidated= (new Map() as Map<string,number>);this.revision=0;this.tail= (Promise.resolve());
     this.query='';this.results= (new Map() as Map<string,CachedMatch>);
     this.migrated=false;
   }

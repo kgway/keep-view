@@ -85,7 +85,7 @@ test('language changes persist across reloads and refresh open views only when t
   appLanguage='en';plugin.syncAppLanguage();await plugin.saveQueue;
   assert.equal(plugin.settings.language,'auto');assert.equal(locale(),'en');
   plugin.settings.language='ja';plugin.saveSettings();await plugin.saveQueue;
-  plugin.settingsTab={containerEl:{isConnected:true},display(){tabRefreshes++;}};
+  plugin.settingsTab={containerEl:{isConnected:true},redisplay(){tabRefreshes++;}};
   const oldRefreshes=refreshes;
   appLanguage='de';plugin.syncAppLanguage();await plugin.saveQueue;
   assert.equal(locale(),'en');assert.equal(tabRefreshes,1);assert.equal(refreshes,oldRefreshes+1);
@@ -169,7 +169,8 @@ test('settings refresh uses the declarative host API only on supported versions'
   class PluginSettingTab {update(){updates++;}}
   const context={module:{exports:{}},require:()=>({Plugin:class{},ItemView:class{},Modal:class{},PluginSettingTab,requireApiVersion:()=>supported}),console};
   runSource(source+'\nmodule.exports=KeepViewSettings;',installModules(context));
-  const tab=new context.module.exports({},{});tab.display=()=>fallbacks++;
+  const tab=new context.module.exports({},{});tab.renderLegacySettings=()=>fallbacks++;
+  tab.display();assert.equal(fallbacks,1,'Older hosts still invoke the legacy renderer');fallbacks=0;
   tab.redisplay();assert.equal(fallbacks,1);assert.equal(updates,0);
   supported=true;tab.redisplay();assert.equal(fallbacks,1);assert.equal(updates,1);
 });

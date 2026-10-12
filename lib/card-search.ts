@@ -18,7 +18,7 @@ class CardSearch {
   constructor(app: App,{index=null,limit=10000,yieldTask=()=>new Promise((resolve)=>(typeof window==='undefined'?setTimeout:window.setTimeout)(resolve,0))}: {index?:SearchIndex|null,limit?:number,yieldTask?:()=>Promise<void>}={}) {
     this.index=index;
     this.app=app;this.limit=limit;this.yieldTask=yieldTask;
-    this.query='';this.cache= (new Map() as Map<string,CachedMatch>);this.generation=0;this.tail= (Promise.resolve() as Promise<unknown>);
+    this.query='';this.cache= (new Map() as Map<string,CachedMatch>);this.generation=0;this.tail= (Promise.resolve());
   }
   cancel() {this.generation++;}
 
